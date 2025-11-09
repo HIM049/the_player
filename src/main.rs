@@ -145,8 +145,9 @@ impl Render for MyApp {
                             div()
                                 .child(
                                     img(self.song_picture.as_ref().unwrap().clone())
-                                        .size(px(150.0)))
+                                        .size(px(150.0))
                                         .rounded_md()
+                                    )
                         }
                     )
                     .child(
@@ -157,15 +158,28 @@ impl Render for MyApp {
             )
             .child(
                 div()
-                    .id("click_area")
                     .w_full()
                     .h_1_3()
                     .bg(gpui::white())
                     .flex()
                     .justify_center()
                     .items_center()
-                    .child("Some content")
-                    .on_click(_cx.listener(Self::handle_switch_player))
+                    .child(
+                        div()
+                            .id("click_area")
+                            .border_1()
+                            .border_color(gpui::black())
+                            .rounded_full()
+                            // .bg(gpui::black())
+                            .w_16()
+                            .h_16()
+                            .flex()
+                            .justify_center()
+                            .items_center()
+                            .child("▶")
+                            .hover(|style| style.bg(rgb(0xdee2e6)))
+                            .on_click(_cx.listener(Self::handle_switch_player))
+                    )
             )
     }
 }
