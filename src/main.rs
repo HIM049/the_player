@@ -1,8 +1,9 @@
 mod service;
+mod assets;
 use std::sync::Arc;
 
 use gpui::{
-    App, Application, Bounds, ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions, div, img, prelude::*, px, rgb, size
+    App, Application, Bounds, ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString, TitlebarOptions, Window, WindowBounds, WindowOptions, div, img, prelude::*, px, rgb, size, svg
 };
 use lofty::picture::Picture;
 use crate::service::{music::Music, music_player::MusicService};
@@ -167,16 +168,19 @@ impl Render for MyApp {
                     .child(
                         div()
                             .id("click_area")
-                            .border_1()
-                            .border_color(gpui::black())
-                            .rounded_full()
-                            // .bg(gpui::black())
+                            // .border_1()
+                            // .border_color(gpui::black())
+                            .rounded_3xl()
+                            .bg(rgb(0x88b7e7))
                             .w_16()
                             .h_16()
                             .flex()
                             .justify_center()
                             .items_center()
-                            .child("▶")
+                            .text_color(gpui::white())
+                            .child(
+                                svg().path("icons/play_pause.svg")
+                            )
                             .hover(|style| style.bg(rgb(0xdee2e6)))
                             .on_click(_cx.listener(Self::handle_switch_player))
                     )
@@ -185,7 +189,9 @@ impl Render for MyApp {
 }
  
 fn main() {
-    Application::new().run(|cx: &mut App| {
+    Application::new()
+        .with_assets(assets::assets::Assets)
+        .run(|cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(500.), px(500.0)), cx);
         cx.open_window(
             WindowOptions {
