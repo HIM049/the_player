@@ -1,5 +1,4 @@
 use std::{fs::File, path::{Path, PathBuf}};
-
 use lofty::{file::TaggedFileExt, tag::Tag};
 
 #[derive(Clone)]

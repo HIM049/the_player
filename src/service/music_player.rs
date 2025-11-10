@@ -3,12 +3,12 @@ use rodio::{Decoder, OutputStream, Sink};
 
 use crate::service::music::Music;
 
-pub struct MusicService {
+pub struct MusicPlayer {
     stream_handle: OutputStream,
     sink: Sink,
 }
 
-impl MusicService {
+impl MusicPlayer {
     pub fn new() -> Result<Self, anyhow::Error> {
         let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
         let sink = Sink::connect_new(&stream_handle.mixer());

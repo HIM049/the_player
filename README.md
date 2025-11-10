@@ -3,8 +3,9 @@ going to be a simple music player.
 
 ## Roadmap
 - basic player
-  - [ ] Play music
+  - [x] Play music
   - [x] Read metadata
+  - [ ] Custom music play module
   - [ ] Play controller
 - advanced function
   - [ ] play list

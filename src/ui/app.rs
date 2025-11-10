@@ -3,7 +3,7 @@ use gpui::{
     ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString, Window, div, img, prelude::*, px, rgb, svg
 };
 use lofty::picture::Picture;
-use crate::service::{music::Music, music_player::MusicService};
+use crate::service::{music::Music, music_player::MusicPlayer};
 
 enum PlayStatus {
     Playing,
@@ -12,7 +12,7 @@ enum PlayStatus {
 }
  
 pub struct MyApp {
-    music_player: MusicService,
+    music_player: MusicPlayer,
     current_music: Option<Music>,
     status: PlayStatus,
     song_name: SharedString,
@@ -23,7 +23,7 @@ pub struct MyApp {
 impl MyApp {
     pub fn init() -> Self {
         Self { 
-            music_player: MusicService::new().unwrap(), 
+            music_player: MusicPlayer::new().unwrap(), 
             current_music: None, 
             status: PlayStatus::Idleing,
             song_name: "-".into(), 
@@ -181,7 +181,7 @@ impl Render for MyApp {
                                     .w(px(32.0))
                                     .h(px(32.0))
                                     .text_color(gpui::white())
-                            )                            .hover(|style| style.bg(rgb(0xdee2e6)))
+                            )                            .hover(|style| style.bg(rgb(0x98acc1)))
                             .on_click(_cx.listener(Self::handle_switch_player))
                     )
             )
