@@ -1,42 +1,84 @@
-use std::{f32::consts::PI, fs::File, thread::sleep, time::Duration};
-
-use anyhow::anyhow;
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::{fs::File, time::Duration};
+use anyhow::{anyhow};
 use cpal::traits::{HostTrait, StreamTrait};
-use rodio::DeviceTrait;
-use symphonia::core::{audio::AudioBufferRef, codecs::{self, CodecRegistry, DecoderOptions}, formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions};
-
+use ringbuf::traits::{Observer, Producer};
+use ringbuf::{HeapCons, HeapProd, storage::Heap, traits::{Consumer, Split}};
+use rodio::{DeviceTrait, decoder};
+use symphonia::core::audio::AudioBufferRef;
+use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::ProbeResult;
+use symphonia::core::codecs::Decoder;
 
 pub struct MusicCore {
-    host: cpal::Host,
-    device: cpal::Device,
-    supported_config: cpal::SupportedStreamConfig,
-    stream: cpal::Stream
+    player: Player,
+    decoder: Arc<Mutex<MusicDecoder>>,
+    // buffer: SharedRb<Heap<f32>>,
 }
 
 impl MusicCore {
-    pub fn new() -> Result<Self, anyhow::Error> {
-        let host = cpal::default_host();
-        let device = host.default_output_device()
-            .ok_or(anyhow!("no output device available"))?;
-        
-        let mut supported_configs_range = device.supported_output_configs()?;
-        let supported_config = supported_configs_range.next()
-            .ok_or(anyhow!("no supported config"))?
-            .with_max_sample_rate();
+    pub fn new() -> Self {
+        let capacity = 2048; 
+        let rb = ringbuf::SharedRb::<Heap<f32>>::new(capacity);
+        let (producer, consumer) = rb.split();
 
-        let stream = device.build_output_stream(
-            &supported_config.config(), 
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {}, 
-            move |err| {}, 
-            None
-        ).unwrap();
+        let player = Player::new(consumer).unwrap();
+        let decoder = MusicDecoder::new(producer);
 
-        Ok(Self { 
-            host: host, 
-            device: device, 
-            supported_config: supported_config,
-            stream: stream, 
-        })
+        Self {
+            player: player,
+            decoder: Arc::new(Mutex::new(decoder)),
+            // buffer: todo!(),
+        }
+    }
+
+    pub fn start_decode(&self) {
+        let decoder = self.decoder.clone();
+        thread::spawn(move || {
+            let mut decoder = decoder.lock().unwrap();
+            // let mut sample_rate = codec_params.sample_rate.unwrap_or(44100);
+            loop {
+                if !decoder.leftover_samples.is_empty() {
+                    let mut temp_leftover_samples = std::mem::take(&mut decoder.leftover_samples);
+                    let (s1, s2) = temp_leftover_samples.as_slices();
+                    let mut written = decoder.producer.push_slice(s1);
+                    if written == s1.len() {
+                        written += decoder.producer.push_slice(s2);
+                    }
+                    temp_leftover_samples.drain(..written);
+                    decoder.leftover_samples = temp_leftover_samples;
+                }
+
+                if decoder.producer.is_full() {
+                    thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                
+                let package = match decoder.probed.format.next_packet() {
+                    Ok(p) => p,
+                    Err(_) => break,
+                };
+                let buff = decoder.decoder.decode(&package).unwrap();
+
+                let (sample, _) = transfer_to_f32(buff);
+
+                let written = decoder.producer.push_slice(&sample);
+                if written < sample.len() {
+                    let remaining_slice = &sample[written..];
+                    decoder.leftover_samples.extend(remaining_slice.iter().cloned());
+                }
+            }
+        });
+    }
+
+    pub fn play(&self) {
+        self.player.play();
     }
     // pub fn some() {
     //     let host = cpal::default_host();
@@ -75,48 +117,126 @@ impl MusicCore {
     //     sleep(Duration::from_secs(60));
     // }
 
-    pub fn decode() {
+
+}
+
+struct Player {
+    host: cpal::Host,
+    device: cpal::Device,
+    supported_config: cpal::SupportedStreamConfig,
+    stream: cpal::Stream,
+}
+
+impl Player {
+    pub fn new(mut consumer: HeapCons<f32>) -> Result<Self, anyhow::Error> {
+        let host = cpal::default_host();
+        let device = host.default_output_device()
+            .ok_or(anyhow!("no output device available"))?;
+        
+        let mut supported_configs_range = device.supported_output_configs()?;
+        let supported_config = supported_configs_range.next()
+            .ok_or(anyhow!("no supported config"))?
+            .with_max_sample_rate();
+
+        let stream = device.build_output_stream(
+            &supported_config.config(), 
+            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                consumer.pop_slice(data);
+            }, 
+            move |err| {}, 
+            None
+        ).unwrap();
+
+        Ok(Self { 
+            host: host, 
+            device: device, 
+            supported_config: supported_config,
+            stream: stream, 
+        })
+    }
+
+    pub fn play(&self) {
+        self.stream.play().unwrap();
+    }
+}
+
+pub struct MusicDecoder {
+    pub producer: HeapProd<f32>,
+    pub probed: Option<ProbeResult>,
+    pub decoder: Option<Box<dyn Decoder>>,
+    pub leftover_samples: VecDeque<f32>,
+}
+
+impl MusicDecoder {
+    pub fn new(producer: HeapProd<f32>) -> Self {
+        Self {
+            producer,
+            probed: None,
+            decoder: None,
+            leftover_samples: VecDeque::new(),
+        }
+    }
+
+    pub fn from_path(&mut self, file_path: PathBuf) -> Result<Self, anyhow::Error> {
+        Ok(self.open_file(Box::new(File::open(file_path)?)))
+    }
+
+    pub fn open_file(&mut self, file: Box<File>) -> Self {
         let codecs = symphonia::default::get_codecs();
         let probe = symphonia::default::get_probe();
-
-        let file = Box::new(File::open("").unwrap());
         let mss = MediaSourceStream::new(file, Default::default());
-        let mut probed = probe.format(
+        let probed = probe.format(
             &Default::default(), 
             mss, 
             &FormatOptions::default(), 
             &MetadataOptions::default()
         ).unwrap();
-        let meta = probed.metadata.get().unwrap();
+        // let meta = probed.metadata.get().unwrap();
         let mut format = probed.format;
         // meta.skip_to_latest();
         let track = format.default_track().unwrap();
         let codec_params = track.codec_params.clone();
         let mut decoder = codecs.make(&codec_params, &DecoderOptions::default()).unwrap();
 
-        // codec_params.sample_rate
-
-        let mut sample = vec![];
-        loop {
-            let package = match format.next_packet() {
-                Ok(p) => p,
-                Err(_) => break,
-            };
-            let buff = decoder.decode(&package).unwrap();
-            match buff {
-                AudioBufferRef::U8(cow) => todo!(),
-                AudioBufferRef::U16(cow) => todo!(),
-                AudioBufferRef::U24(cow) => todo!(),
-                AudioBufferRef::U32(cow) => todo!(),
-                AudioBufferRef::S8(cow) => todo!(),
-                AudioBufferRef::S16(cow) => todo!(),
-                AudioBufferRef::S24(cow) => todo!(),
-                AudioBufferRef::S32(cow) => todo!(),
-                AudioBufferRef::F32(cow) => todo!(),
-                AudioBufferRef::F64(cow) => todo!(),
-            }
-            
-        }
 
     }
+
+}
+
+fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32) {
+    let mut sample_packet = vec![];
+    let sample_rate: u32;
+    let mut channels: usize = 1;
+    match buff {
+        AudioBufferRef::U8(cow) => todo!(),
+        AudioBufferRef::U16(cow) => todo!(),
+        AudioBufferRef::U24(cow) => todo!(),
+        AudioBufferRef::U32(cow) => todo!(),
+        AudioBufferRef::S8(cow) => todo!(),
+        AudioBufferRef::S16(cow) => todo!(),
+        AudioBufferRef::S24(cow) => todo!(),
+        AudioBufferRef::S32(cow) => {
+            
+            sample_rate = cow.spec().rate;
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let sample = cow.chan(ch)[frame_idx] as f32 / i32::MAX as f32;
+                    sample_packet.push(sample)
+                }
+            }
+        },
+        AudioBufferRef::F32(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let sample = cow.chan(ch)[frame_idx];
+                    sample_packet.push(sample);
+                }
+            }
+        },
+        AudioBufferRef::F64(cow) => todo!(),
+    }
+    return (sample_packet, sample_rate)
 }

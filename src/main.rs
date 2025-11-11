@@ -1,13 +1,15 @@
 mod service;
 mod assets;
 mod ui;
+use std::{thread::sleep, time::Duration};
+
 use ui::app::MyApp;
 
 use gpui::{
     App, Application, Bounds, SharedString, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size
 };
 
-use crate::service::music_core;
+use crate::service::music_core::{self, MusicDecoder};
 
  
 fn main() {
@@ -34,5 +36,7 @@ fn main() {
     // });
 
 
-    music_core::MusicCore::some();
+    let core = music_core::MusicCore::new();
+    core.play();
+    sleep(Duration::from_secs(60));
 }
