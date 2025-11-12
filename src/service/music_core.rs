@@ -236,7 +236,16 @@ fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32) {
                 }
             }
         },
-        AudioBufferRef::F64(cow) => todo!(),
+        AudioBufferRef::F64(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let sample = cow.chan(ch)[frame_idx] as f32;
+                    sample_packet.push(sample);
+                }
+            }
+        },
     }
     return (sample_packet, sample_rate)
 }
