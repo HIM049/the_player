@@ -194,15 +194,88 @@ fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32) {
     let sample_rate: u32;
     let mut channels: usize = 1;
     match buff {
-        AudioBufferRef::U8(cow) => todo!(),
-        AudioBufferRef::U16(cow) => todo!(),
-        AudioBufferRef::U24(cow) => todo!(),
-        AudioBufferRef::U32(cow) => todo!(),
-        AudioBufferRef::S8(cow) => todo!(),
-        AudioBufferRef::S16(cow) => todo!(),
-        AudioBufferRef::S24(cow) => todo!(),
+        AudioBufferRef::U8(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let raw = cow.chan(ch)[frame_idx];
+                    let norm = raw as f32 / u8::MAX as f32;
+                    let sample = norm * 2.0 - 1.0;
+                    sample_packet.push(sample)
+                }
+            }
+        }
+        AudioBufferRef::U16(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let raw = cow.chan(ch)[frame_idx];
+                    let norm = raw as f32 / u16::MAX as f32;
+                    let sample = norm * 2.0 - 1.0;
+                    sample_packet.push(sample)
+                }
+            }
+        }
+        AudioBufferRef::U24(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let raw = cow.chan(ch)[frame_idx].0;
+                    let norm = raw as f32 / 16_777_215.0;
+                    let sample = norm * 2.0 - 1.0;
+                    sample_packet.push(sample)
+                }
+            }
+        }
+        AudioBufferRef::U32(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let raw = cow.chan(ch)[frame_idx];
+                    let norm = raw as f32 / u32::MAX as f32;
+                    let sample = norm * 2.0 - 1.0;
+                    sample_packet.push(sample)
+                }
+            }
+        }
+        AudioBufferRef::S8(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let sample = cow.chan(ch)[frame_idx] as f32 / i8::MAX as f32;
+                    sample_packet.push(sample)
+                }
+            }
+        }
+        AudioBufferRef::S16(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let sample = cow.chan(ch)[frame_idx] as f32 / i16::MAX as f32;
+                    sample_packet.push(sample)
+                }
+            }
+        }
+        AudioBufferRef::S24(cow) => {
+            sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
+            for frame_idx in 0..cow.frames() {
+                for ch in 0..channels {
+                    let raw_val = cow.chan(ch)[frame_idx].0;
+                    let sample = raw_val as f32 / 8_388_608.0; // 2^23
+                    sample_packet.push(sample)
+                }
+            }
+        }
         AudioBufferRef::S32(cow) => {
             sample_rate = cow.spec().rate;
+            channels = cow.spec().channels.count();
             for frame_idx in 0..cow.frames() {
                 for ch in 0..channels {
                     let sample = cow.chan(ch)[frame_idx] as f32 / i32::MAX as f32;
@@ -213,7 +286,6 @@ fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32) {
         AudioBufferRef::F32(cow) => {
             sample_rate = cow.spec().rate;
             channels = cow.spec().channels.count();
-
             for frame_idx in 0..cow.frames() {
                 for ch in 0..channels {
                     let sample = cow.chan(ch)[frame_idx];
