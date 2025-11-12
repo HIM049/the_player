@@ -1,17 +1,17 @@
-mod service;
 mod assets;
+mod service;
 mod ui;
-use std::{thread::sleep, time::Duration};
+use std::{path::PathBuf, thread::sleep, time::Duration};
 
 use ui::app::MyApp;
 
 use gpui::{
-    App, Application, Bounds, SharedString, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size
+    App, Application, Bounds, SharedString, TitlebarOptions, WindowBounds, WindowOptions,
+    prelude::*, px, size,
 };
 
 use crate::service::music_core::{self, MusicDecoder};
 
- 
 fn main() {
     // Application::new()
     //     .with_assets(assets::assets::Assets)
@@ -24,7 +24,7 @@ fn main() {
     //                 title: Some(SharedString::new("The Player")),
     //                 appears_transparent: false,
     //                 traffic_light_position: None,
-                    
+
     //             }),
     //             ..Default::default()
     //         },
@@ -35,8 +35,7 @@ fn main() {
     //     .unwrap();
     // });
 
-
-    let core = music_core::MusicCore::new();
+    let core = music_core::MusicPlayer::new(PathBuf::from("./music.flac"));
     core.play();
     sleep(Duration::from_secs(60));
 }
