@@ -67,6 +67,7 @@ impl MusicPlayer {
     }
 
     pub fn pause(&self) {
+        self.output.pause();
         let mut state = self.controller.state.lock().unwrap();
         *state = PlayState::Paused;
     }
@@ -130,10 +131,12 @@ impl Output {
     pub fn play(&self) {
         self.stream.play().unwrap();
     }
+
+    pub fn pause(&self) {
+        self.stream.pause().unwrap();
+    }
 }
 
-// TODO: split analysis file and run decoder
-// (return a information struct)
 pub struct MusicDecoder {
     pub sample_rate: u32,
     pub format: Box<dyn FormatReader>,
@@ -173,9 +176,6 @@ impl MusicDecoder {
         mut producer: HeapProd<f32>,
         controller: Arc<PlayerControl>,
     ) -> Result<(), anyhow::Error> {
-        // let meta = probed.metadata.get().unwrap();
-        // meta.skip_to_latest();
-
         let mut leftover_samples = VecDeque::new();
         thread::spawn(move || {
             loop {
