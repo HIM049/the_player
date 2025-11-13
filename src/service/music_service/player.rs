@@ -42,4 +42,9 @@ impl Player {
         self.output.pause();
         self.controller.pause();
     }
+
+    pub fn stop(&self) {
+        self.output.pause();
+        self.controller.stop();
+    }
 }

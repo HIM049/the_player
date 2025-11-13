@@ -1,6 +1,7 @@
 pub mod controller;
 pub mod core;
 pub mod decoder;
+pub mod models;
 pub mod music;
 pub mod output;
 pub mod player;

@@ -5,8 +5,13 @@ going to be a simple music player.
 - basic player
   - [x] Play music
   - [x] Read metadata
-  - [ ] Custom music play module
-  - [ ] Play controller
+  - [x] Custom music play module
+  - [ ] Play controller  <-
 - advanced function
   - [ ] play list
   - [ ] lrc player
+  
+## Misson list
+- play finish callback
+- play process indicator
+- play process control

@@ -58,6 +58,7 @@ impl Decoder {
         let mut leftover_samples = VecDeque::new();
         let need_resample = !(device_rate.0 == music_decoder.sample_rate);
         let mut resampler: Option<Stream> = None;
+        let mut expected_sample_len: usize = 0;
 
         thread::spawn(move || {
             loop {
@@ -87,7 +88,6 @@ impl Decoder {
                 };
                 let buff = music_decoder.decoder.decode(&package).unwrap();
                 let (mut sample, _, channels) = Stream::transfer_to_f32(buff);
-                println!("debug: len{}", sample.len());
 
                 // if need resample
                 if need_resample {
@@ -101,6 +101,11 @@ impl Decoder {
                             )
                             .unwrap(),
                         );
+                        expected_sample_len = sample.len();
+                    }
+                    // if short than expected length
+                    if sample.len() < expected_sample_len {
+                        sample.resize(expected_sample_len, 0.0);
                     }
                     sample = resampler.as_mut().unwrap().process(&sample);
                 };

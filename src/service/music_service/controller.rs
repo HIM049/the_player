@@ -1,11 +1,7 @@
 use std::sync::{Condvar, Mutex};
 
-#[derive(PartialEq, Clone, Copy)]
-pub enum PlayState {
-    Playing,
-    Paused,
-    Stopped,
-}
+use crate::service::music_service::models::PlayState;
+
 pub struct Controller {
     state: Mutex<PlayState>,
     condvar: Condvar,

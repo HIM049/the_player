@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
-use crate::service::music_service::{music::Music, player::Player};
+use crate::service::music_service::{models::PlayState, music::Music, player::Player};
 
 pub struct Core {
     pub player: Option<Player>,
     pub current: Option<Music>,
+    state: PlayState,
     // queue: Vec<Music>,
 }
 
@@ -13,6 +14,7 @@ impl Core {
         Self {
             player: None,
             current: None,
+            state: PlayState::Stopped,
         }
     }
 
@@ -22,15 +24,29 @@ impl Core {
         self.play();
     }
 
-    pub fn play(&self) {
+    pub fn play(&mut self) {
+        self.state = PlayState::Playing;
         if let Some(p) = self.player.as_ref() {
             p.play();
         }
     }
 
-    pub fn pause(&self) {
+    pub fn pause(&mut self) {
+        self.state = PlayState::Paused;
         if let Some(p) = self.player.as_ref() {
             p.pause();
         }
+    }
+
+    pub fn stop(&mut self) {
+        self.state = PlayState::Stopped;
+        self.player = None;
+        if let Some(p) = self.player.as_ref() {
+            p.stop();
+        }
+    }
+
+    pub fn get_state(&self) -> PlayState {
+        self.state
     }
 }

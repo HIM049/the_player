@@ -1,6 +1,7 @@
 use crate::service::music_service::{
     self,
     core::{self, Core},
+    models::PlayState,
     music::Music,
 };
 use gpui::{
@@ -10,15 +11,8 @@ use gpui::{
 use lofty::picture::Picture;
 use std::{path::PathBuf, sync::Arc};
 
-enum PlayStatus {
-    Playing,
-    Idleing,
-    Pausing,
-}
-
 pub struct MyApp {
     music_core: music_service::core::Core,
-    status: PlayStatus,
     song_name: SharedString,
     song_picture: Option<ImageSource>,
     status_text: SharedString,
@@ -28,7 +22,6 @@ impl MyApp {
     pub fn init() -> Self {
         Self {
             music_core: Core::new(),
-            status: PlayStatus::Idleing,
             song_name: "-".into(),
             song_picture: None,
             status_text: "NOW IDLEING".into(),
@@ -36,13 +29,12 @@ impl MyApp {
     }
 
     // fn set_status(&mut self, _event: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
-    fn set_status(&mut self, new_status: PlayStatus) {
-        let text = match new_status {
-            PlayStatus::Playing => "PLAYING",
-            PlayStatus::Idleing => "IDLEING",
-            PlayStatus::Pausing => "PAUSING",
+    fn update_status(&mut self) {
+        let text = match self.music_core.get_state() {
+            PlayState::Playing => "PLAYING",
+            PlayState::Stopped => "IDLEING",
+            PlayState::Paused => "PAUSED",
         };
-        self.status = new_status;
         self.status_text = format!("NOW {}", text).into();
     }
 
@@ -83,10 +75,9 @@ impl MyApp {
     }
 
     fn load_new_music(&mut self, path_str: PathBuf) {
-        // self.music_player.append_music(&music).unwrap();
         self.music_core.append(path_str);
         self.get_music_meta();
-        self.set_status(PlayStatus::Playing);
+        self.update_status();
     }
 
     fn handle_file_drop(
@@ -110,17 +101,16 @@ impl MyApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        match self.status {
-            PlayStatus::Playing => {
+        match self.music_core.get_state() {
+            PlayState::Playing => {
                 self.music_core.pause();
-                self.set_status(PlayStatus::Pausing);
             }
-            PlayStatus::Pausing => {
+            PlayState::Paused => {
                 self.music_core.play();
-                self.set_status(PlayStatus::Playing);
             }
-            PlayStatus::Idleing => (),
+            PlayState::Stopped => (),
         }
+        self.update_status();
         cx.notify();
     }
 }
