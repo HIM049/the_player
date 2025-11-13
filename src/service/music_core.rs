@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use cpal::SampleRate;
 use cpal::traits::{HostTrait, StreamTrait};
 use ringbuf::traits::{Observer, Producer};
 use ringbuf::{
@@ -6,19 +7,17 @@ use ringbuf::{
     storage::Heap,
     traits::{Consumer, Split},
 };
-use rodio::{DeviceTrait, decoder};
+use rodio::DeviceTrait;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::{fs::File, time::Duration};
 use symphonia::core::audio::{AudioBufferRef, Signal};
-use symphonia::core::codecs::Decoder;
-use symphonia::core::codecs::DecoderOptions;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::codecs::{Decoder, DecoderOptions};
+use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::ProbeResult;
 
 #[derive(PartialEq)]
 enum PlayState {
@@ -52,45 +51,70 @@ impl MusicPlayer {
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(capacity);
         let (producer, consumer) = rb.split();
 
-        let output = Output::new(consumer).unwrap();
+        let decoded = MusicDecoder::decode_from_path(file_path).unwrap();
+        let output = Output::new(consumer, SampleRate(decoded.sample_rate)).unwrap();
         let controller = Arc::new(PlayerControl::new());
-        MusicDecoder::start_decode_from_path(file_path, producer, controller.clone()).unwrap();
+        MusicDecoder::start_decoder(decoded, producer, controller.clone()).unwrap();
 
         Self { output, controller }
     }
 
     pub fn play(&self) {
+        let mut state = self.controller.state.lock().unwrap();
+        *state = PlayState::Playing;
+        self.controller.condvar.notify_one();
         self.output.play();
+    }
+
+    pub fn pause(&self) {
+        let mut state = self.controller.state.lock().unwrap();
+        *state = PlayState::Paused;
     }
 }
 
 struct Output {
     host: cpal::Host,
     device: cpal::Device,
-    supported_config: cpal::SupportedStreamConfig,
+    supported_config: cpal::StreamConfig,
     stream: cpal::Stream,
 }
 
 impl Output {
-    pub fn new(mut consumer: HeapCons<f32>) -> Result<Self, anyhow::Error> {
+    pub fn new(
+        mut consumer: HeapCons<f32>,
+        target_sample_rate: SampleRate,
+    ) -> Result<Self, anyhow::Error> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
             .ok_or(anyhow!("no output device available"))?;
 
+        // init config
         let mut supported_configs_range = device.supported_output_configs()?;
-        let supported_config = supported_configs_range
-            .next()
-            .ok_or(anyhow!("no supported config"))?
-            .with_max_sample_rate();
+        let support_config_range = supported_configs_range.find(|config| {
+            config.min_sample_rate() <= target_sample_rate
+                && target_sample_rate <= config.max_sample_rate()
+        });
+        let supported_config;
+        if let Some(config) = support_config_range {
+            supported_config = config.with_sample_rate(target_sample_rate).config();
+        } else {
+            supported_config = supported_configs_range
+                .next()
+                .ok_or(anyhow!("no supported config"))?
+                .with_max_sample_rate()
+                .config();
+        }
 
         let stream = device
             .build_output_stream(
-                &supported_config.config(),
+                &supported_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     consumer.pop_slice(data);
                 },
-                move |err| {},
+                move |err| {
+                    eprintln!("error: {}", err);
+                },
                 None,
             )
             .unwrap();
@@ -110,45 +134,50 @@ impl Output {
 
 // TODO: split analysis file and run decoder
 // (return a information struct)
-pub struct MusicDecoder;
+pub struct MusicDecoder {
+    pub sample_rate: u32,
+    pub format: Box<dyn FormatReader>,
+    pub decoder: Box<dyn Decoder>,
+}
 impl MusicDecoder {
-    pub fn start_decode_from_path(
-        file_path: PathBuf,
-        producer: HeapProd<f32>,
-        controller: Arc<PlayerControl>,
-    ) -> Result<(), anyhow::Error> {
-        Self::start_decode(Box::new(File::open(file_path)?), producer, controller)?;
-        Ok(())
+    pub fn decode_from_path(file_path: PathBuf) -> Result<Self, anyhow::Error> {
+        Ok(Self::decode_file(Box::new(File::open(file_path)?))?)
     }
 
-    pub fn start_decode(
-        file: Box<File>,
+    pub fn decode_file(file: Box<File>) -> Result<Self, anyhow::Error> {
+        let probe = symphonia::default::get_probe();
+        let mss = MediaSourceStream::new(file, Default::default());
+        let probed = probe.format(
+            &Default::default(),
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )?;
+
+        let format = probed.format;
+        let track = format.default_track().unwrap();
+        let codec_params = track.codec_params.clone();
+        let sample_rate = codec_params.sample_rate.unwrap_or(44100);
+
+        let codecs = symphonia::default::get_codecs();
+        let decoder = codecs.make(&codec_params, &DecoderOptions::default())?;
+        Ok(Self {
+            sample_rate,
+            format,
+            decoder,
+        })
+    }
+
+    pub fn start_decoder(
+        mut music_decoder: MusicDecoder,
         mut producer: HeapProd<f32>,
         controller: Arc<PlayerControl>,
     ) -> Result<(), anyhow::Error> {
-        let codecs = symphonia::default::get_codecs();
-        let probe = symphonia::default::get_probe();
-        let mss = MediaSourceStream::new(file, Default::default());
-        let probed = probe
-            .format(
-                &Default::default(),
-                mss,
-                &FormatOptions::default(),
-                &MetadataOptions::default(),
-            )
-            .unwrap();
         // let meta = probed.metadata.get().unwrap();
-        let mut format = probed.format;
         // meta.skip_to_latest();
-        let track = format.default_track().unwrap();
-        let codec_params = track.codec_params.clone();
-        let mut decoder = codecs
-            .make(&codec_params, &DecoderOptions::default())
-            .unwrap();
 
         let mut leftover_samples = VecDeque::new();
         thread::spawn(move || {
-            // let mut sample_rate = codec_params.sample_rate.unwrap_or(44100);
             loop {
                 let mut state_guard = controller.state.lock().unwrap();
                 // pause the thread
@@ -170,11 +199,11 @@ impl MusicDecoder {
                     continue;
                 }
 
-                let package = match format.next_packet() {
+                let package = match music_decoder.format.next_packet() {
                     Ok(p) => p,
                     Err(_) => break, // play finished
                 };
-                let buff = decoder.decode(&package).unwrap();
+                let buff = music_decoder.decoder.decode(&package).unwrap();
 
                 let (sample, _) = transfer_to_f32(buff);
 
