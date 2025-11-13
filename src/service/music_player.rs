@@ -1,8 +1,9 @@
-use std::{fs::File, io::{BufReader}};
 use rodio::{Decoder, OutputStream, Sink};
+use std::{fs::File, io::BufReader};
 
-use crate::service::music::Music;
+use crate::service::music_service::music::Music;
 
+/// Handle music decode and play
 pub struct MusicPlayer {
     stream_handle: OutputStream,
     sink: Sink,
@@ -12,7 +13,10 @@ impl MusicPlayer {
     pub fn new() -> Result<Self, anyhow::Error> {
         let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
         let sink = Sink::connect_new(&stream_handle.mixer());
-        Ok(Self { stream_handle: stream_handle, sink: sink })
+        Ok(Self {
+            stream_handle: stream_handle,
+            sink: sink,
+        })
     }
 
     pub fn append_file(&self, file: BufReader<File>) -> Result<(), anyhow::Error> {

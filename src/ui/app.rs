@@ -1,19 +1,23 @@
-use std::sync::Arc;
+use crate::service::music_service::{
+    self,
+    core::{self, Core},
+    music::Music,
+};
 use gpui::{
-    ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString, Window, div, img, prelude::*, px, rgb, svg
+    ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString, Window, div,
+    img, prelude::*, px, rgb, svg,
 };
 use lofty::picture::Picture;
-use crate::service::{music::Music, music_player::MusicPlayer};
+use std::{path::PathBuf, sync::Arc};
 
 enum PlayStatus {
     Playing,
     Idleing,
     Pausing,
 }
- 
+
 pub struct MyApp {
-    music_player: MusicPlayer,
-    current_music: Option<Music>,
+    music_core: music_service::core::Core,
     status: PlayStatus,
     song_name: SharedString,
     song_picture: Option<ImageSource>,
@@ -22,11 +26,10 @@ pub struct MyApp {
 
 impl MyApp {
     pub fn init() -> Self {
-        Self { 
-            music_player: MusicPlayer::new().unwrap(), 
-            current_music: None, 
+        Self {
+            music_core: Core::new(),
             status: PlayStatus::Idleing,
-            song_name: "-".into(), 
+            song_name: "-".into(),
             song_picture: None,
             status_text: "NOW IDLEING".into(),
         }
@@ -54,16 +57,17 @@ impl MyApp {
                 _ => None,
             };
             if mtype != None {
-                return Some(ImageSource::Image(
-                    Arc::new(Image::from_bytes(mtype.unwrap(), pic.data().to_vec()))
-                ))
+                return Some(ImageSource::Image(Arc::new(Image::from_bytes(
+                    mtype.unwrap(),
+                    pic.data().to_vec(),
+                ))));
             }
         }
         None
     }
 
     fn get_music_meta(&mut self) {
-        if let Some(music) = &self.current_music {
+        if let Some(music) = &self.music_core.current {
             if let Some(tags) = music.get_tags() {
                 if let Some(title) = tags.get_string(&lofty::tag::ItemKey::TrackTitle) {
                     self.song_name = SharedString::new(title);
@@ -78,41 +82,49 @@ impl MyApp {
         }
     }
 
-    fn load_new_music(&mut self, music: Music) {
-        self.music_player.append_music(&music).unwrap();
-        self.current_music = Some(music);
+    fn load_new_music(&mut self, path_str: PathBuf) {
+        // self.music_player.append_music(&music).unwrap();
+        self.music_core.append(path_str);
         self.get_music_meta();
         self.set_status(PlayStatus::Playing);
     }
-    
-    fn handle_file_drop(&mut self, event: &ExternalPaths, _window: &mut Window, cx: &mut Context<Self>) {
+
+    fn handle_file_drop(
+        &mut self,
+        event: &ExternalPaths,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(path) = event.paths().first() {
             if !path.is_file() {
                 return;
             }
-            if let Ok(music) = Music::from_path(path) {
-                self.load_new_music(music);
-            }
+            self.load_new_music(path.clone());
         }
         cx.notify();
     }
 
-    fn handle_switch_player(&mut self, _: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>){
+    fn handle_switch_player(
+        &mut self,
+        _: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match self.status {
             PlayStatus::Playing => {
-                self.music_player.pause();
+                self.music_core.pause();
                 self.set_status(PlayStatus::Pausing);
-            },
+            }
             PlayStatus::Pausing => {
-                self.music_player.play();
+                self.music_core.play();
                 self.set_status(PlayStatus::Playing);
-            },
+            }
             PlayStatus::Idleing => (),
         }
         cx.notify();
     }
 }
- 
+
 impl Render for MyApp {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -130,29 +142,17 @@ impl Render for MyApp {
                     .flex_col()
                     .justify_center()
                     .items_center()
-                    .child(
+                    .child(div().text_xl().child(self.status_text.clone()))
+                    .child(if self.song_picture.is_none() {
                         div()
-                            .text_xl()
-                            .child(self.status_text.clone())
-                    )
-                    
-                    .child(
-                        if self.song_picture.is_none() {
-                            div()
-                        } else {
-                            div()
-                                .child(
-                                    img(self.song_picture.as_ref().unwrap().clone())
-                                        .size(px(150.0))
-                                        .rounded_md()
-                                    )
-                        }
-                    )
-                    .child(
-                        div()
-                            .text_3xl()
-                            .child(self.song_name.clone())
-                    )
+                    } else {
+                        div().child(
+                            img(self.song_picture.as_ref().unwrap().clone())
+                                .size(px(150.0))
+                                .rounded_md(),
+                        )
+                    })
+                    .child(div().text_3xl().child(self.song_name.clone())),
             )
             .child(
                 div()
@@ -180,11 +180,11 @@ impl Render for MyApp {
                                     .path("icons/play_pause.svg")
                                     .w(px(32.0))
                                     .h(px(32.0))
-                                    .text_color(gpui::white())
-                            )                            .hover(|style| style.bg(rgb(0x98acc1)))
-                            .on_click(_cx.listener(Self::handle_switch_player))
-                    )
+                                    .text_color(gpui::white()),
+                            )
+                            .hover(|style| style.bg(rgb(0x98acc1)))
+                            .on_click(_cx.listener(Self::handle_switch_player)),
+                    ),
             )
     }
 }
- 
