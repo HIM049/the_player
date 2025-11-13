@@ -1,45 +1,57 @@
+use rubato::{FftFixedIn, Resampler};
 use symphonia::core::audio::{AudioBufferRef, Signal};
 
-pub struct Stream;
+pub struct Stream {
+    resampler: FftFixedIn<f32>,
+    input_rate: usize,
+    output_rate: usize,
+    channels: usize,
+}
 
 impl Stream {
-    pub fn resample_stereo(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Vec<f32> {
-        assert!(
-            samples.len() % 2 == 0,
-            "stereo data length should be an even"
-        );
+    pub fn new(
+        input_rate: usize,
+        output_rate: usize,
+        chunk_size: usize,
+        channels: usize,
+    ) -> Result<Self, anyhow::Error> {
+        let r = FftFixedIn::<f32>::new(input_rate, output_rate, chunk_size, 1, channels)?;
+        Ok(Self {
+            resampler: r,
+            input_rate,
+            output_rate,
+            channels,
+        })
+    }
 
-        let (left, right): (Vec<f32>, Vec<f32>) =
-            samples.chunks(2).map(|chunk| (chunk[0], chunk[1])).unzip();
+    pub fn process(&mut self, input: &Vec<f32>) -> Vec<f32> {
+        if self.input_rate == self.output_rate {
+            return input.to_vec();
+        }
 
-        let left_resampled = Self::resample_mono(&left, from_rate, to_rate);
-        let right_resampled = Self::resample_mono(&right, from_rate, to_rate);
+        let frames = input.len() / self.channels;
 
-        let mut interleaved = Vec::with_capacity(left_resampled.len() * 2);
-        for (l, r) in left_resampled.into_iter().zip(right_resampled) {
-            interleaved.push(l);
-            interleaved.push(r);
+        // split channels
+        let mut channels_data = vec![Vec::with_capacity(frames); self.channels];
+        for (i, &sample) in input.iter().enumerate() {
+            channels_data[i % self.channels].push(sample);
+        }
+
+        let outputs = self
+            .resampler
+            .process(&channels_data, None)
+            .expect("Resampling failed");
+
+        // mix two channels
+        let frames_out = outputs[0].len();
+        let mut interleaved = Vec::with_capacity(frames_out * self.channels);
+        for i in 0..frames_out {
+            for ch in 0..self.channels {
+                interleaved.push(outputs[ch][i]);
+            }
         }
 
         interleaved
-    }
-
-    pub fn resample_mono(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
-        let ratio = to_rate as f32 / from_rate as f32;
-        let new_len = (samples.len() as f32 * ratio).round() as usize;
-        let mut resampled = Vec::with_capacity(new_len);
-
-        for i in 0..new_len {
-            let pos = i as f32 / ratio;
-            let idx = pos.floor() as usize;
-            let frac = pos.fract();
-
-            let s0 = samples.get(idx).copied().unwrap_or(0.0);
-            let s1 = samples.get(idx + 1).copied().unwrap_or(0.0);
-            resampled.push(s0 * (1.0 - frac) + s1 * frac);
-        }
-
-        resampled
     }
 
     pub fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32, usize) {
@@ -100,7 +112,7 @@ impl Stream {
                 channels = cow.spec().channels.count();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
-                        let sample = cow.chan(ch)[frame_idx] as f32 / i8::MAX as f32;
+                        let sample = cow.chan(ch)[frame_idx] as f32 / 128.0;
                         sample_packet.push(sample)
                     }
                 }
@@ -110,7 +122,7 @@ impl Stream {
                 channels = cow.spec().channels.count();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
-                        let sample = cow.chan(ch)[frame_idx] as f32 / i16::MAX as f32;
+                        let sample = cow.chan(ch)[frame_idx] as f32 / 32768.0;
                         sample_packet.push(sample)
                     }
                 }
@@ -121,7 +133,7 @@ impl Stream {
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let raw_val = cow.chan(ch)[frame_idx].0;
-                        let sample = raw_val as f32 / 8_388_608.0; // 2^23
+                        let sample = raw_val as f32 / 8_388_608.0; // 2^23 - This was already correct for S24
                         sample_packet.push(sample)
                     }
                 }
@@ -131,7 +143,7 @@ impl Stream {
                 channels = cow.spec().channels.count();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
-                        let sample = cow.chan(ch)[frame_idx] as f32 / i32::MAX as f32;
+                        let sample = cow.chan(ch)[frame_idx] as f32 / 2147483648.0;
                         sample_packet.push(sample)
                     }
                 }

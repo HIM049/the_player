@@ -15,7 +15,7 @@ pub struct Player {
 
 impl Player {
     pub fn new(file_path: PathBuf) -> Self {
-        let capacity = 4096;
+        let capacity = 48000;
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(capacity);
         let (producer, consumer) = rb.split();
 
