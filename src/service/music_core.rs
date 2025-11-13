@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use core::task;
 use cpal::SampleRate;
 use cpal::traits::{HostTrait, StreamTrait};
 use ringbuf::traits::{Observer, Producer};
@@ -47,7 +48,7 @@ pub struct MusicPlayer {
 
 impl MusicPlayer {
     pub fn new(file_path: PathBuf) -> Self {
-        let capacity = 2048;
+        let capacity = 4096;
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(capacity);
         let (producer, consumer) = rb.split();
 
@@ -93,13 +94,19 @@ impl Output {
         // init config
         let mut supported_configs_range = device.supported_output_configs()?;
         let support_config_range = supported_configs_range.find(|config| {
+            println!("debug: {:?}", config);
+
             config.min_sample_rate() <= target_sample_rate
                 && target_sample_rate <= config.max_sample_rate()
         });
         let supported_config;
         if let Some(config) = support_config_range {
+            println!("debug: found config: {:?}", config);
+
             supported_config = config.with_sample_rate(target_sample_rate).config();
         } else {
+            println!("debug: config not found");
+            let mut supported_configs_range = device.supported_output_configs()?;
             supported_config = supported_configs_range
                 .next()
                 .ok_or(anyhow!("no supported config"))?
@@ -164,6 +171,9 @@ impl MusicDecoder {
 
         let codecs = symphonia::default::get_codecs();
         let decoder = codecs.make(&codec_params, &DecoderOptions::default())?;
+
+        println!("debug: orignal rate {:?}", codec_params.sample_rate);
+        println!("debug: target rate {}", sample_rate);
         Ok(Self {
             sample_rate,
             format,
