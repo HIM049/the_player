@@ -9,6 +9,7 @@ pub struct Stream {
 }
 
 impl Stream {
+    /// Init a stream resampler
     pub fn new(
         input_rate: usize,
         output_rate: usize,
@@ -24,7 +25,9 @@ impl Stream {
         })
     }
 
+    /// Do resample for a stream block
     pub fn process(&mut self, input: &Vec<f32>) -> Vec<f32> {
+        // return directly if no need resample
         if self.input_rate == self.output_rate {
             return input.to_vec();
         }
@@ -37,6 +40,7 @@ impl Stream {
             channels_data[i % self.channels].push(sample);
         }
 
+        // resample
         let outputs = self
             .resampler
             .process(&channels_data, None)
@@ -54,6 +58,7 @@ impl Stream {
         interleaved
     }
 
+    /// Static method used to transfer AudioBufferRef to Vec<f32>
     pub fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32, usize) {
         let mut sample_packet = vec![];
         let sample_rate: u32;

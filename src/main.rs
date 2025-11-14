@@ -1,7 +1,6 @@
 mod assets;
 mod service;
 mod ui;
-use std::{path::PathBuf, thread::sleep, time::Duration};
 
 use ui::app::MyApp;
 

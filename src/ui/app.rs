@@ -1,9 +1,4 @@
-use crate::service::music_service::{
-    self,
-    core::{self, Core},
-    models::PlayState,
-    music::Music,
-};
+use crate::service::music_service::{self, core::Core, models::PlayState};
 use gpui::{
     ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString, Window, div,
     img, prelude::*, px, rgb, svg,

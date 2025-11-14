@@ -19,7 +19,7 @@ impl Core {
     }
 
     pub fn append(&mut self, path: PathBuf) {
-        self.player = Some(Player::new(path.clone()));
+        self.player = Some(Player::new(path.clone()).unwrap());
         self.current = Some(Music::from_path(path).unwrap());
         self.play();
     }
