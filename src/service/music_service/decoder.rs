@@ -10,6 +10,7 @@ use symphonia::core::codecs::{self, DecoderOptions};
 use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
+use symphonia::core::units::Time;
 
 use crate::service::music_service::controller::Controller;
 use crate::service::music_service::stream::Stream;
@@ -19,6 +20,7 @@ pub struct Decoder {
     pub format: Box<dyn FormatReader>,
     pub decoder: Box<dyn codecs::Decoder>,
 }
+
 impl Decoder {
     /// Decode from a file path
     pub fn decode_from_path(file_path: PathBuf) -> Result<Self, anyhow::Error> {
@@ -49,6 +51,18 @@ impl Decoder {
             format,
             decoder,
         })
+    }
+
+    pub fn calc_time(&self, ts: u64) -> Option<Time> {
+        let format = self.format.default_track().unwrap();
+        let duration = format.codec_params.time_base?.calc_time(ts);
+        Some(duration)
+    }
+
+    /// Get music langth time
+    pub fn duration(&self) -> Option<Time> {
+        let format = self.format.default_track().unwrap();
+        self.calc_time(format.codec_params.n_frames?)
     }
 
     /// Start decoder thread
