@@ -5,3 +5,5 @@ pub enum PlayState {
     Paused,
     Stopped,
 }
+
+pub static RINGBUF_SIZE: usize = 48000;

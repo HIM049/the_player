@@ -59,14 +59,16 @@ impl Stream {
     }
 
     /// Static method used to transfer AudioBufferRef to Vec<f32>
-    pub fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32, usize) {
+    pub fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32, usize, usize) {
         let mut sample_packet = vec![];
         let sample_rate: u32;
         let channels: usize;
+        let frames: usize;
         match buff {
             AudioBufferRef::U8(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let raw = cow.chan(ch)[frame_idx];
@@ -79,6 +81,7 @@ impl Stream {
             AudioBufferRef::U16(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let raw = cow.chan(ch)[frame_idx];
@@ -91,6 +94,7 @@ impl Stream {
             AudioBufferRef::U24(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let raw = cow.chan(ch)[frame_idx].0;
@@ -103,6 +107,7 @@ impl Stream {
             AudioBufferRef::U32(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let raw = cow.chan(ch)[frame_idx];
@@ -115,6 +120,7 @@ impl Stream {
             AudioBufferRef::S8(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let sample = cow.chan(ch)[frame_idx] as f32 / 128.0;
@@ -125,6 +131,7 @@ impl Stream {
             AudioBufferRef::S16(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let sample = cow.chan(ch)[frame_idx] as f32 / 32768.0;
@@ -135,6 +142,7 @@ impl Stream {
             AudioBufferRef::S24(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let raw_val = cow.chan(ch)[frame_idx].0;
@@ -146,6 +154,7 @@ impl Stream {
             AudioBufferRef::S32(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let sample = cow.chan(ch)[frame_idx] as f32 / 2147483648.0;
@@ -156,6 +165,7 @@ impl Stream {
             AudioBufferRef::F32(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let sample = cow.chan(ch)[frame_idx];
@@ -166,6 +176,7 @@ impl Stream {
             AudioBufferRef::F64(cow) => {
                 sample_rate = cow.spec().rate;
                 channels = cow.spec().channels.count();
+                frames = cow.frames();
                 for frame_idx in 0..cow.frames() {
                     for ch in 0..channels {
                         let sample = cow.chan(ch)[frame_idx] as f32;
@@ -174,6 +185,6 @@ impl Stream {
                 }
             }
         }
-        return (sample_packet, sample_rate, channels);
+        return (sample_packet, sample_rate, channels, frames);
     }
 }

@@ -1,18 +1,20 @@
+use anyhow::anyhow;
 use cpal::SampleRate;
 use ringbuf::HeapProd;
 use ringbuf::traits::{Observer, Producer};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::thread;
 use std::{fs::File, time::Duration};
 use symphonia::core::codecs::{self, DecoderOptions};
 use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::units::Time;
 
 use crate::service::music_service::controller::Controller;
+use crate::service::music_service::models;
 use crate::service::music_service::stream::Stream;
 
 pub struct Decoder {
@@ -39,7 +41,9 @@ impl Decoder {
         )?;
 
         let format = probed.format;
-        let track = format.default_track().unwrap();
+        let track = format
+            .default_track()
+            .ok_or_else(|| anyhow!("no track found"))?;
         let codec_params = track.codec_params.clone();
         let sample_rate = codec_params.sample_rate.unwrap_or(44100);
 
@@ -53,24 +57,13 @@ impl Decoder {
         })
     }
 
-    pub fn calc_time(&self, ts: u64) -> Option<Time> {
-        let format = self.format.default_track().unwrap();
-        let duration = format.codec_params.time_base?.calc_time(ts);
-        Some(duration)
-    }
-
-    /// Get music langth time
-    pub fn duration(&self) -> Option<Time> {
-        let format = self.format.default_track().unwrap();
-        self.calc_time(format.codec_params.n_frames?)
-    }
-
     /// Start decoder thread
     pub fn start_decoder(
         mut music_decoder: Decoder,
         mut producer: HeapProd<f32>,
         controller: Arc<Controller>,
         device_rate: SampleRate,
+        pushed_len: Arc<AtomicU64>,
     ) -> Result<(), anyhow::Error> {
         // sample write overflow zone
         let mut leftover_samples = VecDeque::new();
@@ -80,10 +73,12 @@ impl Decoder {
         let mut resampler: Option<Stream> = None;
         // sample pack expected length
         let mut expected_sample_len: usize = 0;
+        // let mut final_len: Option<usize> = None;
 
         // run decode thread
         thread::spawn(move || {
             loop {
+                let rate = producer.occupied_len() as f32 / models::RINGBUF_SIZE as f32;
                 // pause the thread if need
                 controller.wait_if_paused();
 
@@ -96,6 +91,9 @@ impl Decoder {
                 if !leftover_samples.is_empty() {
                     let written = producer.push_slice(leftover_samples.make_contiguous());
                     leftover_samples.drain(..written);
+
+                    // add to counter
+                    // pushed_len.fetch_add(written as u64, std::sync::atomic::Ordering::Relaxed);
                 }
 
                 // if ringbuff is full, wait
@@ -111,7 +109,8 @@ impl Decoder {
                 };
                 let buff = music_decoder.decoder.decode(&package).unwrap();
                 // transfer data to f32
-                let (mut sample, _, channels) = Stream::transfer_to_f32(buff);
+                let (mut sample, _, channels, frames) = Stream::transfer_to_f32(buff);
+                pushed_len.fetch_add(frames as u64, std::sync::atomic::Ordering::Relaxed);
 
                 // if need resample
                 if need_resample {
@@ -130,14 +129,22 @@ impl Decoder {
                     }
                     // if short than expected length
                     if sample.len() < expected_sample_len {
+                        // let len = ((sample.len() as f32 * resample_diff + 0.5).floor()) as usize;
+                        // final_len = Some(len);
                         sample.resize(expected_sample_len, 0.0);
                     }
                     // resample
                     sample = resampler.as_mut().unwrap().process(&sample);
+
+                    // if let Some(fl) = final_len {
+                    //     sample.truncate(fl);
+                    // }
                 };
 
                 // push sample into buffer
                 let written = producer.push_slice(&sample);
+                // add to counter
+                // pushed_len.fetch_add(written as u64, std::sync::atomic::Ordering::Relaxed);
                 // buffer is full, put data into overflow
                 if written < sample.len() {
                     let remaining_slice = &sample[written..];

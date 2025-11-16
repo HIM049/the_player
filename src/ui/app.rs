@@ -14,6 +14,7 @@ pub struct MyApp {
 }
 
 impl MyApp {
+    /// Init app struct
     pub fn init() -> Self {
         Self {
             music_core: Core::new(),
@@ -33,6 +34,7 @@ impl MyApp {
         self.status_text = format!("NOW {}", text).into();
     }
 
+    /// Convert to image source
     fn get_picture(&self, pic: &Picture) -> Option<ImageSource> {
         if let Some(mime) = pic.mime_type() {
             let mtype = match mime {
@@ -108,6 +110,31 @@ impl MyApp {
         self.update_status();
         cx.notify();
     }
+
+    fn handle_refresh(
+        &mut self,
+        _event: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        println!(
+            "length / played: ( {:?}s / {:?}s )",
+            self.music_core
+                .player
+                .as_ref()
+                .unwrap()
+                .duration()
+                .unwrap()
+                .seconds,
+            self.music_core
+                .player
+                .as_ref()
+                .unwrap()
+                .played_time()
+                .unwrap()
+                .seconds
+        );
+    }
 }
 
 impl Render for MyApp {
@@ -141,6 +168,7 @@ impl Render for MyApp {
             )
             .child(
                 div()
+                    .gap_10()
                     .w_full()
                     .h_1_3()
                     .bg(gpui::white())
@@ -149,7 +177,7 @@ impl Render for MyApp {
                     .items_center()
                     .child(
                         div()
-                            .id("click_area")
+                            .id("button_play_pause")
                             // .border_1()
                             // .border_color(gpui::black())
                             .rounded_3xl()
@@ -169,6 +197,23 @@ impl Render for MyApp {
                             )
                             .hover(|style| style.bg(rgb(0x98acc1)))
                             .on_click(_cx.listener(Self::handle_switch_player)),
+                    )
+                    .child(
+                        div()
+                            .id("button_refresh")
+                            // .border_1()
+                            // .border_color(gpui::black())
+                            .rounded_3xl()
+                            .bg(rgb(0x88b7e7))
+                            .w_16()
+                            .h_16()
+                            .flex()
+                            .justify_center()
+                            .items_center()
+                            .text_color(gpui::white())
+                            .child("T")
+                            .hover(|style| style.bg(rgb(0x98acc1)))
+                            .on_click(_cx.listener(Self::handle_refresh)),
                     ),
             )
     }

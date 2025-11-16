@@ -2,15 +2,21 @@ use cpal::SampleRate;
 use ringbuf::{storage::Heap, traits::Split};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use symphonia::core::formats::Track;
+use symphonia::core::units::Time;
 
 use crate::service::music_service::controller::Controller;
 use crate::service::music_service::decoder::Decoder;
+use crate::service::music_service::models;
 use crate::service::music_service::output::Output;
 
 // reInit for every new song
 pub struct Player {
     output: Output,
     controller: Arc<Controller>,
+    pushed_len: Arc<AtomicU64>,
+    track: Track,
 }
 
 impl Player {
@@ -18,8 +24,7 @@ impl Player {
     /// Used to play a file, create a decode thread and output thread.
     pub fn new(file_path: PathBuf) -> Result<Self, anyhow::Error> {
         // setup ringbuf
-        let capacity = 48000;
-        let rb = ringbuf::SharedRb::<Heap<f32>>::new(capacity);
+        let rb = ringbuf::SharedRb::<Heap<f32>>::new(models::RINGBUF_SIZE);
         let (producer, consumer) = rb.split();
 
         // decode file
@@ -28,15 +33,48 @@ impl Player {
         let output = Output::new(consumer, SampleRate(decoded.sample_rate))?;
         // create decoder controller
         let controller = Arc::new(Controller::new());
+        // clone track data
+        let track = decoded.format.default_track().unwrap().clone();
+        // create atomic counter
+        let pushed_len = Arc::new(AtomicU64::new(0));
+
         // create and run decode thread
         Decoder::start_decoder(
             decoded,
             producer,
             controller.clone(),
             output.supported_config.sample_rate,
+            pushed_len.clone(),
         )?;
 
-        Ok(Self { output, controller })
+        Ok(Self {
+            output,
+            controller,
+            pushed_len,
+            track,
+        })
+    }
+
+    /// Calculate time by length of sample
+    pub fn calc_time(&self, ts: u64) -> Option<Time> {
+        let duration = self.track.codec_params.time_base?.calc_time(ts);
+        Some(duration)
+    }
+
+    /// Get music played time
+    pub fn played_time(&self) -> Option<Time> {
+        let latency_samples = (models::RINGBUF_SIZE as u32
+            / self.track.codec_params.channels?.count() as u32
+            / self.output.supported_config.sample_rate.0)
+            * self.track.codec_params.sample_rate?;
+        let played_len = (self.pushed_len.load(Ordering::Relaxed) - latency_samples as u64).max(0);
+        self.calc_time(played_len)
+    }
+
+    /// Get music langth time
+    pub fn duration(&self) -> Option<Time> {
+        let n_frames = self.track.codec_params.n_frames?;
+        self.calc_time(n_frames)
     }
 
     /// Start decode and output.
