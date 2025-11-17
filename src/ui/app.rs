@@ -1,13 +1,17 @@
-use crate::service::music_service::{self, core::Core, models::PlayState};
+use crate::{
+    service::music_service::{self, core::Core, models::PlayState},
+    utils::utils,
+};
 use gpui::{
-    ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString, Window, div,
-    img, prelude::*, px, rgb, svg,
+    AsyncApp, ClickEvent, Context, ExternalPaths, Image, ImageFormat, ImageSource, SharedString,
+    Task, WeakEntity, Window, div, img, prelude::*, px, rgb, svg,
 };
 use lofty::picture::Picture;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 pub struct MyApp {
     music_core: music_service::core::Core,
+    refresh_task: Option<Task<()>>,
     song_name: SharedString,
     song_picture: Option<ImageSource>,
     status_text: SharedString,
@@ -18,6 +22,7 @@ impl MyApp {
     pub fn init() -> Self {
         Self {
             music_core: Core::new(),
+            refresh_task: None,
             song_name: "-".into(),
             song_picture: None,
             status_text: "NOW IDLEING".into(),
@@ -90,6 +95,7 @@ impl MyApp {
             self.load_new_music(path.clone());
         }
         cx.notify();
+        self.start_update(cx);
     }
 
     fn handle_switch_player(
@@ -101,9 +107,11 @@ impl MyApp {
         match self.music_core.get_state() {
             PlayState::Playing => {
                 self.music_core.pause();
+                self.refresh_task = None;
             }
             PlayState::Paused => {
                 self.music_core.play();
+                self.start_update(cx);
             }
             PlayState::Stopped => (),
         }
@@ -111,29 +119,25 @@ impl MyApp {
         cx.notify();
     }
 
-    fn handle_refresh(
-        &mut self,
-        _event: &ClickEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        println!(
-            "length / played: ( {:?}s / {:?}s )",
-            self.music_core
-                .player
-                .as_ref()
-                .unwrap()
-                .duration()
-                .unwrap()
-                .seconds,
-            self.music_core
-                .player
-                .as_ref()
-                .unwrap()
-                .played_time()
-                .unwrap()
-                .seconds
+    fn start_update(&mut self, _cx: &mut Context<Self>) {
+        let t = _cx.spawn(
+            async move |app_weak: WeakEntity<MyApp>, cx: &mut AsyncApp| {
+                loop {
+                    if let Some(app) = app_weak.upgrade() {
+                        app.update(cx, |app: &mut MyApp, _cx: &mut Context<Self>| {
+                            if let Some(p) = app.music_core.player.as_ref() {
+                                _cx.notify();
+                            }
+                        })
+                        .unwrap();
+                    }
+                    cx.background_executor()
+                        .timer(Duration::from_millis(400))
+                        .await;
+                }
+            },
         );
+        self.refresh_task = Some(t);
     }
 }
 
@@ -164,11 +168,20 @@ impl Render for MyApp {
                                 .rounded_md(),
                         )
                     })
-                    .child(div().text_3xl().child(self.song_name.clone())),
+                    .child(div().text_3xl().child(self.song_name.clone()))
+                    .child(if let Some(p) = self.music_core.player.as_ref() {
+                        format!(
+                            "{} / {}",
+                            utils::format_time(p.played_time().unwrap()),
+                            utils::format_time(p.duration().unwrap()),
+                        )
+                    } else {
+                        "".to_string()
+                    }),
             )
             .child(
                 div()
-                    .gap_10()
+                    .gap_5()
                     .w_full()
                     .h_1_3()
                     .bg(gpui::white())
@@ -197,24 +210,23 @@ impl Render for MyApp {
                             )
                             .hover(|style| style.bg(rgb(0x98acc1)))
                             .on_click(_cx.listener(Self::handle_switch_player)),
-                    )
-                    .child(
-                        div()
-                            .id("button_refresh")
-                            // .border_1()
-                            // .border_color(gpui::black())
-                            .rounded_3xl()
-                            .bg(rgb(0x88b7e7))
-                            .w_16()
-                            .h_16()
-                            .flex()
-                            .justify_center()
-                            .items_center()
-                            .text_color(gpui::white())
-                            .child("T")
-                            .hover(|style| style.bg(rgb(0x98acc1)))
-                            .on_click(_cx.listener(Self::handle_refresh)),
-                    ),
+                    ), // .child(
+                       //     div()
+                       //         .id("button_refresh")
+                       //         // .border_1()
+                       //         // .border_color(gpui::black())
+                       //         .rounded_3xl()
+                       //         .bg(rgb(0x88b7e7))
+                       //         .w_16()
+                       //         .h_16()
+                       //         .flex()
+                       //         .justify_center()
+                       //         .items_center()
+                       //         .text_color(gpui::white())
+                       //         .child("T")
+                       //         .hover(|style| style.bg(rgb(0x98acc1)))
+                       //         .on_click(_cx.listener(Self::handle_refresh)),
+                       // ),
             )
     }
 }

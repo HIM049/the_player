@@ -1,6 +1,7 @@
 mod assets;
 mod service;
 mod ui;
+mod utils;
 
 use ui::app::MyApp;
 
