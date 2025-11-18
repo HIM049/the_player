@@ -41,9 +41,7 @@ impl Core {
     pub fn stop(&mut self) {
         self.state = PlayState::Stopped;
         self.player = None;
-        if let Some(p) = self.player.as_ref() {
-            p.stop();
-        }
+        self.current = None
     }
 
     pub fn get_state(&self) -> PlayState {

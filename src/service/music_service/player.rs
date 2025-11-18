@@ -36,7 +36,7 @@ impl Player {
         // clone track data
         let track = decoded.format.default_track().unwrap().clone();
         // create atomic counter
-        let pushed_len = Arc::new(AtomicU64::new(0));
+        let decoded_len = Arc::new(AtomicU64::new(0));
 
         // create and run decode thread
         Decoder::start_decoder(
@@ -44,13 +44,13 @@ impl Player {
             producer,
             controller.clone(),
             output.supported_config.sample_rate,
-            pushed_len.clone(),
+            decoded_len.clone(),
         )?;
 
         Ok(Self {
             output,
             controller,
-            pushed_len,
+            pushed_len: decoded_len,
             track,
         })
     }
@@ -93,5 +93,11 @@ impl Player {
     pub fn stop(&self) {
         self.output.pause();
         self.controller.stop();
+    }
+}
+
+impl Drop for Player {
+    fn drop(&mut self) {
+        self.stop();
     }
 }

@@ -63,7 +63,7 @@ impl Decoder {
         mut producer: HeapProd<f32>,
         controller: Arc<Controller>,
         device_rate: SampleRate,
-        pushed_len: Arc<AtomicU64>,
+        decoded_len: Arc<AtomicU64>,
     ) -> Result<(), anyhow::Error> {
         // sample write overflow zone
         let mut leftover_samples = VecDeque::new();
@@ -91,9 +91,6 @@ impl Decoder {
                 if !leftover_samples.is_empty() {
                     let written = producer.push_slice(leftover_samples.make_contiguous());
                     leftover_samples.drain(..written);
-
-                    // add to counter
-                    // pushed_len.fetch_add(written as u64, std::sync::atomic::Ordering::Relaxed);
                 }
 
                 // if ringbuff is full, wait
@@ -110,7 +107,8 @@ impl Decoder {
                 let buff = music_decoder.decoder.decode(&package).unwrap();
                 // transfer data to f32
                 let (mut sample, _, channels, frames) = Stream::transfer_to_f32(buff);
-                pushed_len.fetch_add(frames as u64, std::sync::atomic::Ordering::Relaxed);
+                // append counter
+                decoded_len.fetch_add(frames as u64, std::sync::atomic::Ordering::Relaxed);
 
                 // if need resample
                 if need_resample {
@@ -129,22 +127,14 @@ impl Decoder {
                     }
                     // if short than expected length
                     if sample.len() < expected_sample_len {
-                        // let len = ((sample.len() as f32 * resample_diff + 0.5).floor()) as usize;
-                        // final_len = Some(len);
                         sample.resize(expected_sample_len, 0.0);
                     }
                     // resample
                     sample = resampler.as_mut().unwrap().process(&sample);
-
-                    // if let Some(fl) = final_len {
-                    //     sample.truncate(fl);
-                    // }
                 };
 
                 // push sample into buffer
                 let written = producer.push_slice(&sample);
-                // add to counter
-                // pushed_len.fetch_add(written as u64, std::sync::atomic::Ordering::Relaxed);
                 // buffer is full, put data into overflow
                 if written < sample.len() {
                     let remaining_slice = &sample[written..];

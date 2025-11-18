@@ -1,8 +1,7 @@
 use anyhow::anyhow;
 use cpal::SampleRate;
-use cpal::traits::{HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::{HeapCons, traits::Consumer};
-use rodio::DeviceTrait;
 
 /// The struct storage Output device
 pub struct Output {
