@@ -11,4 +11,4 @@ lofty = "0.22.4"
 ringbuf = "0.4.8"
 rubato = "0.16.2"
 rust-embed = "8.9.0"
-symphonia = "0.5.5"
+symphonia = {version = "0.5.5", features = ["mp3", "flac", "wav", "ogg", "isomp4", "aac"]}

@@ -18,10 +18,11 @@ impl Core {
         }
     }
 
-    pub fn append(&mut self, path: PathBuf) {
-        self.player = Some(Player::new(path.clone()).unwrap());
-        self.current = Some(Music::from_path(path).unwrap());
+    pub fn append(&mut self, path: PathBuf) -> Result<(), anyhow::Error> {
+        self.player = Some(Player::new(path.clone())?);
+        self.current = Some(Music::from_path(path)?);
         self.play();
+        Ok(())
     }
 
     pub fn play(&mut self) {

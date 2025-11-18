@@ -5,9 +5,9 @@ use crate::{
 };
 use gpui::{
     AsyncApp, ClickEvent, Context, ExternalPaths, ImageSource, SharedString, Task, WeakEntity,
-    Window, div, img, prelude::*, px, rgb, svg,
+    Window, div, img, prelude::*, px, relative, rgb, svg,
 };
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 
 pub struct MyApp {
     music_core: music_service::core::Core,
@@ -59,6 +59,21 @@ impl MyApp {
         None
     }
 
+    fn current_process(&self) -> f32 {
+        if let Some(p) = self.music_core.player.as_ref() {
+            let played = match p.played_time() {
+                Some(t) => t.seconds,
+                None => 0,
+            };
+            let total = match p.duration() {
+                Some(t) => t.seconds,
+                None => 0,
+            };
+            return played as f32 / total as f32;
+        }
+        0.
+    }
+
     /// File deop event
     fn handle_file_drop(
         &mut self,
@@ -73,7 +88,9 @@ impl MyApp {
                 return;
             }
             // append to player
-            self.music_core.append(path.clone());
+            if let Err(e) = self.music_core.append(path.clone()) {
+                eprintln!("error: {}", e);
+            }
             // start refresh page
             self.spawn_refresh(cx);
             // update view
@@ -119,7 +136,7 @@ impl MyApp {
                         }
                     }
                     cx.background_executor()
-                        .timer(Duration::from_millis(400))
+                        .timer(Duration::from_millis(100))
                         .await;
                 }
             },
@@ -141,7 +158,7 @@ impl Render for MyApp {
             .on_drop(_cx.listener(Self::handle_file_drop))
             .child(
                 div()
-                    .id("drop-target")
+                    .relative()
                     .w_full()
                     .h_2_3()
                     .bg(rgb(0x398ad7))
@@ -169,7 +186,16 @@ impl Render for MyApp {
                         )
                     } else {
                         "".to_string()
-                    }),
+                    })
+                    .child(
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .bg(rgb(0x88b7e7))
+                            .h_1p5()
+                            .left_0()
+                            .w(relative(self.current_process())),
+                    ),
             )
             .child(
                 div()
