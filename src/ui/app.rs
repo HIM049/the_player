@@ -1,4 +1,5 @@
 use crate::{
+    assets::icons,
     service::music_service::{self, core::Core, models::PlayState},
     utils::utils,
 };
@@ -58,26 +59,29 @@ impl MyApp {
         None
     }
 
-    fn load_new_music(&mut self, path_str: PathBuf) {
-        self.music_core.append(path_str);
-    }
-
+    /// File deop event
     fn handle_file_drop(
         &mut self,
         event: &ExternalPaths,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // try get path
         if let Some(path) = event.paths().first() {
+            // check whether file
             if !path.is_file() {
                 return;
             }
-            self.load_new_music(path.clone());
+            // append to player
+            self.music_core.append(path.clone());
+            // start refresh page
+            self.spawn_refresh(cx);
+            // update view
+            cx.notify();
         }
-        cx.notify();
-        self.spawn_refresh(cx);
     }
 
+    /// Switch player state
     fn handle_switch_player(
         &mut self,
         _: &ClickEvent,
@@ -123,7 +127,7 @@ impl MyApp {
         self.refresh_task = Some(t);
     }
 
-    fn handle_drop_core(&mut self, _: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    fn handle_drop_core(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.music_core.stop();
         cx.notify();
     }
@@ -191,7 +195,7 @@ impl Render for MyApp {
                             .text_color(gpui::white())
                             .child(
                                 svg()
-                                    .path("icons/play_pause.svg")
+                                    .path(icons::PLAY_PAUSE_FILLED)
                                     .w(px(32.0))
                                     .h(px(32.0))
                                     .text_color(gpui::white()),
@@ -212,7 +216,13 @@ impl Render for MyApp {
                             .justify_center()
                             .items_center()
                             .text_color(gpui::white())
-                            .child("D")
+                            .child(
+                                svg()
+                                    .path(icons::STOP_FILLED)
+                                    .w(px(26.0))
+                                    .h(px(26.0))
+                                    .text_color(gpui::white()),
+                            )
                             .hover(|style| style.bg(rgb(0x98acc1)))
                             .on_click(_cx.listener(Self::handle_drop_core)),
                     ),
