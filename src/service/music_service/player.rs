@@ -1,8 +1,8 @@
 use cpal::SampleRate;
 use ringbuf::{storage::Heap, traits::Split};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use symphonia::core::formats::Track;
 use symphonia::core::units::Time;
 
@@ -22,7 +22,7 @@ pub struct Player {
 impl Player {
     /// Create a new player
     /// Used to play a file, create a decode thread and output thread.
-    pub fn new(file_path: PathBuf) -> Result<Self, anyhow::Error> {
+    pub fn new(file_path: PathBuf, gain: Arc<Mutex<f32>>) -> Result<Self, anyhow::Error> {
         // setup ringbuf
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(models::RINGBUF_SIZE);
         let (producer, consumer) = rb.split();
@@ -30,7 +30,7 @@ impl Player {
         // decode file
         let decoded = Decoder::decode_from_path(file_path)?;
         // setup output
-        let output = Output::new(consumer, SampleRate(decoded.sample_rate))?;
+        let output = Output::new(consumer, SampleRate(decoded.sample_rate), gain.clone())?;
         // create decoder controller
         let controller = Arc::new(Controller::new());
         // clone track data
@@ -47,6 +47,7 @@ impl Player {
             decoded_len.clone(),
         )?;
 
+        // return self
         Ok(Self {
             output,
             controller,

@@ -58,6 +58,10 @@ impl Stream {
         interleaved
     }
 
+    pub fn apply_gain(f: f32, gain: f32) -> f32 {
+        f * gain
+    }
+
     /// Static method used to transfer AudioBufferRef to Vec<f32>
     pub fn transfer_to_f32(buff: AudioBufferRef) -> (Vec<f32>, u32, usize, usize) {
         let mut sample_packet = vec![];

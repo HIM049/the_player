@@ -12,6 +12,7 @@ use std::time::Duration;
 pub struct MyApp {
     music_core: music_service::core::Core,
     refresh_task: Option<Task<()>>,
+    vol: bool,
 }
 
 impl MyApp {
@@ -20,6 +21,7 @@ impl MyApp {
         Self {
             music_core: Core::new(),
             refresh_task: None,
+            vol: true,
         }
     }
 
@@ -148,6 +150,13 @@ impl MyApp {
         self.music_core.stop();
         cx.notify();
     }
+
+    fn handle_switch_volume(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let new = if self.vol { 0.5 } else { 1.0 };
+        self.vol = !self.vol;
+        println!("new volume {}", new);
+        self.music_core.set_gain(new);
+    }
 }
 
 impl Render for MyApp {
@@ -251,6 +260,21 @@ impl Render for MyApp {
                             )
                             .hover(|style| style.bg(rgb(0x98acc1)))
                             .on_click(_cx.listener(Self::handle_drop_core)),
+                    )
+                    .child(
+                        div()
+                            .id("vol_swtich")
+                            .rounded_3xl()
+                            .bg(rgb(0x88b7e7))
+                            .w_16()
+                            .h_16()
+                            .flex()
+                            .justify_center()
+                            .items_center()
+                            .text_color(gpui::white())
+                            .child("V")
+                            .hover(|style| style.bg(rgb(0x98acc1)))
+                            .on_click(_cx.listener(Self::handle_switch_volume)),
                     ),
             )
     }

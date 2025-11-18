@@ -14,7 +14,6 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 
 use crate::service::music_service::controller::Controller;
-use crate::service::music_service::models;
 use crate::service::music_service::stream::Stream;
 
 pub struct Decoder {
@@ -73,12 +72,10 @@ impl Decoder {
         let mut resampler: Option<Stream> = None;
         // sample pack expected length
         let mut expected_sample_len: usize = 0;
-        // let mut final_len: Option<usize> = None;
 
         // run decode thread
         thread::spawn(move || {
             loop {
-                let rate = producer.occupied_len() as f32 / models::RINGBUF_SIZE as f32;
                 // pause the thread if need
                 controller.wait_if_paused();
 

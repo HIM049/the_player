@@ -1,10 +1,14 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use crate::service::music_service::{models::PlayState, music::Music, player::Player};
 
 pub struct Core {
     pub player: Option<Player>,
     pub current: Option<Music>,
+    gain: Arc<Mutex<f32>>,
     state: PlayState,
     // queue: Vec<Music>,
 }
@@ -14,12 +18,13 @@ impl Core {
         Self {
             player: None,
             current: None,
+            gain: Arc::new(Mutex::new(0.5)),
             state: PlayState::Stopped,
         }
     }
 
     pub fn append(&mut self, path: PathBuf) -> Result<(), anyhow::Error> {
-        self.player = Some(Player::new(path.clone())?);
+        self.player = Some(Player::new(path.clone(), self.gain.clone())?);
         self.current = Some(Music::from_path(path)?);
         self.play();
         Ok(())
@@ -47,5 +52,10 @@ impl Core {
 
     pub fn get_state(&self) -> PlayState {
         self.state
+    }
+
+    pub fn set_gain(&self, new_value: f32) {
+        let mut gain = self.gain.lock().unwrap();
+        *gain = new_value;
     }
 }

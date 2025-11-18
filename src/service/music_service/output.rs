@@ -1,7 +1,11 @@
+use std::sync::{Arc, Mutex};
+
 use anyhow::anyhow;
 use cpal::SampleRate;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::{HeapCons, traits::Consumer};
+
+use crate::service::music_service::stream::Stream;
 
 /// The struct storage Output device
 pub struct Output {
@@ -16,6 +20,7 @@ impl Output {
     pub fn new(
         mut consumer: HeapCons<f32>,
         target_sample_rate: SampleRate,
+        gain: Arc<Mutex<f32>>,
     ) -> Result<Self, anyhow::Error> {
         let host = cpal::default_host();
         let device = host
@@ -48,7 +53,11 @@ impl Output {
             .build_output_stream(
                 &supported_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    consumer.pop_slice(data);
+                    let g = *gain.lock().unwrap();
+                    for sample in data.as_mut() {
+                        let f = consumer.try_pop().unwrap_or(0.0);
+                        *sample = Stream::apply_gain(f, g)
+                    }
                 },
                 move |err| {
                     eprintln!("error: {}", err);
