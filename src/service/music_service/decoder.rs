@@ -5,7 +5,7 @@ use ringbuf::traits::{Observer, Producer};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::{fs::File, time::Duration};
 use symphonia::core::codecs::{self, DecoderOptions};
@@ -105,7 +105,7 @@ impl Decoder {
                 // transfer data to f32
                 let (mut sample, _, channels, frames) = Stream::transfer_to_f32(buff);
                 // append counter
-                decoded_len.fetch_add(frames as u64, std::sync::atomic::Ordering::Relaxed);
+                decoded_len.fetch_add(frames as u64, Ordering::Relaxed);
 
                 // if need resample
                 if need_resample {

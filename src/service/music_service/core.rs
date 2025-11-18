@@ -1,14 +1,16 @@
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, atomic::Ordering},
 };
+
+use atomic_float::AtomicF32;
 
 use crate::service::music_service::{models::PlayState, music::Music, player::Player};
 
 pub struct Core {
     pub player: Option<Player>,
     pub current: Option<Music>,
-    gain: Arc<Mutex<f32>>,
+    gain: Arc<AtomicF32>,
     state: PlayState,
     // queue: Vec<Music>,
 }
@@ -18,7 +20,7 @@ impl Core {
         Self {
             player: None,
             current: None,
-            gain: Arc::new(Mutex::new(0.5)),
+            gain: Arc::new(AtomicF32::new(0.5)),
             state: PlayState::Stopped,
         }
     }
@@ -55,7 +57,6 @@ impl Core {
     }
 
     pub fn set_gain(&self, new_value: f32) {
-        let mut gain = self.gain.lock().unwrap();
-        *gain = new_value;
+        self.gain.store(new_value, Ordering::Relaxed);
     }
 }

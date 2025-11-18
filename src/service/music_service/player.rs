@@ -1,8 +1,9 @@
+use atomic_float::AtomicF32;
 use cpal::SampleRate;
 use ringbuf::{storage::Heap, traits::Split};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use symphonia::core::formats::Track;
 use symphonia::core::units::Time;
 
@@ -15,28 +16,35 @@ use crate::service::music_service::output::Output;
 pub struct Player {
     output: Output,
     controller: Arc<Controller>,
-    pushed_len: Arc<AtomicU64>,
+    decoded_len: Arc<AtomicU64>,
+    buf_occupied: Arc<AtomicUsize>,
     track: Track,
 }
 
 impl Player {
     /// Create a new player
     /// Used to play a file, create a decode thread and output thread.
-    pub fn new(file_path: PathBuf, gain: Arc<Mutex<f32>>) -> Result<Self, anyhow::Error> {
+    pub fn new(file_path: PathBuf, gain: Arc<AtomicF32>) -> Result<Self, anyhow::Error> {
         // setup ringbuf
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(models::RINGBUF_SIZE);
         let (producer, consumer) = rb.split();
 
+        // create atomic counter
+        let decoded_len = Arc::new(AtomicU64::new(0));
+        let buf_occupied = Arc::new(AtomicUsize::new(0));
         // decode file
         let decoded = Decoder::decode_from_path(file_path)?;
         // setup output
-        let output = Output::new(consumer, SampleRate(decoded.sample_rate), gain.clone())?;
+        let output = Output::new(
+            consumer,
+            SampleRate(decoded.sample_rate),
+            gain.clone(),
+            buf_occupied.clone(),
+        )?;
         // create decoder controller
         let controller = Arc::new(Controller::new());
         // clone track data
         let track = decoded.format.default_track().unwrap().clone();
-        // create atomic counter
-        let decoded_len = Arc::new(AtomicU64::new(0));
 
         // create and run decode thread
         Decoder::start_decoder(
@@ -51,7 +59,8 @@ impl Player {
         Ok(Self {
             output,
             controller,
-            pushed_len: decoded_len,
+            decoded_len,
+            buf_occupied,
             track,
         })
     }
@@ -64,11 +73,16 @@ impl Player {
 
     /// Get music played time
     pub fn played_time(&self) -> Option<Time> {
-        let latency_samples = (models::RINGBUF_SIZE as u32
-            / self.track.codec_params.channels?.count() as u32
-            / self.output.supported_config.sample_rate.0)
-            * self.track.codec_params.sample_rate?;
-        let played_len = (self.pushed_len.load(Ordering::Relaxed) - latency_samples as u64).max(0);
+        let occupied = self.buf_occupied.load(Ordering::Relaxed);
+        let latency_samples = (((occupied as u32 / self.track.codec_params.channels?.count() as u32)
+            as f32
+            / self.output.supported_config.sample_rate.0 as f32)
+            * self.track.codec_params.sample_rate? as f32) as u64;
+
+        let played_len = self
+            .decoded_len
+            .load(Ordering::Relaxed)
+            .saturating_sub(latency_samples);
         self.calc_time(played_len)
     }
 

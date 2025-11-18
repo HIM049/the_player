@@ -129,7 +129,7 @@ impl MyApp {
                     if let Some(app) = app_weak.upgrade() {
                         if let Err(_) =
                             app.update(cx, |app: &mut MyApp, _cx: &mut Context<Self>| {
-                                if let Some(p) = app.music_core.player.as_ref() {
+                                if let Some(_) = app.music_core.player.as_ref() {
                                     _cx.notify();
                                 }
                             })
@@ -151,8 +151,8 @@ impl MyApp {
         cx.notify();
     }
 
-    fn handle_switch_volume(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let new = if self.vol { 0.5 } else { 1.0 };
+    fn handle_switch_volume(&mut self, _: &ClickEvent, _: &mut Window, _: &mut Context<Self>) {
+        let new = if self.vol { 0.0 } else { 1.0 };
         self.vol = !self.vol;
         println!("new volume {}", new);
         self.music_core.set_gain(new);

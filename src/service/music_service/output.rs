@@ -1,8 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::anyhow;
+use atomic_float::AtomicF32;
 use cpal::SampleRate;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use ringbuf::traits::Observer;
 use ringbuf::{HeapCons, traits::Consumer};
 
 use crate::service::music_service::stream::Stream;
@@ -20,7 +23,8 @@ impl Output {
     pub fn new(
         mut consumer: HeapCons<f32>,
         target_sample_rate: SampleRate,
-        gain: Arc<Mutex<f32>>,
+        gain: Arc<AtomicF32>,
+        buf_occupied: Arc<AtomicUsize>,
     ) -> Result<Self, anyhow::Error> {
         let host = cpal::default_host();
         let device = host
@@ -53,11 +57,15 @@ impl Output {
             .build_output_stream(
                 &supported_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    let g = *gain.lock().unwrap();
-                    for sample in data.as_mut() {
-                        let f = consumer.try_pop().unwrap_or(0.0);
-                        *sample = Stream::apply_gain(f, g)
+                    let g = gain.load(Ordering::Relaxed);
+                    let r_lenth = consumer.pop_slice(data);
+                    for sample in &mut data[..r_lenth] {
+                        *sample = Stream::apply_gain(*sample, g)
                     }
+                    for sample in &mut data[r_lenth..] {
+                        *sample = 0.0;
+                    }
+                    buf_occupied.store(consumer.occupied_len(), Ordering::Relaxed);
                 },
                 move |err| {
                     eprintln!("error: {}", err);

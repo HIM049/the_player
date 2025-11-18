@@ -6,4 +6,4 @@ pub enum PlayState {
     Stopped,
 }
 
-pub static RINGBUF_SIZE: usize = 48000;
+pub static RINGBUF_SIZE: usize = 48000 * 1;
