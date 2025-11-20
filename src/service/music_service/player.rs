@@ -9,21 +9,28 @@ use symphonia::core::units::Time;
 
 use crate::service::music_service::controller::Controller;
 use crate::service::music_service::decoder::Decoder;
-use crate::service::music_service::models;
+use crate::service::music_service::models::{self, PlayState};
 use crate::service::music_service::output::Output;
 
 // reInit for every new song
 pub struct Player {
+    // output device
     output: Output,
+    // decode controller
     controller: Arc<Controller>,
+    // decoded frames length
     decoded_len: Arc<AtomicU64>,
-    buf_occupied: Arc<AtomicUsize>,
+    // ringbuf occupied length
+    occupied_len: Arc<AtomicUsize>,
+    // current music track info
     track: Track,
 }
 
+// TODO: add a thread for check play time and support play finish callback
+
 impl Player {
     /// Create a new player
-    /// Used to play a file, create a decode thread and output thread.
+    /// Used to play a file, will create a decode thread and output thread.
     pub fn new(file_path: PathBuf, gain: Arc<AtomicF32>) -> Result<Self, anyhow::Error> {
         // setup ringbuf
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(models::RINGBUF_SIZE);
@@ -60,7 +67,7 @@ impl Player {
             output,
             controller,
             decoded_len,
-            buf_occupied,
+            occupied_len: buf_occupied,
             track,
         })
     }
@@ -73,7 +80,7 @@ impl Player {
 
     /// Get music played time
     pub fn played_time(&self) -> Option<Time> {
-        let occupied = self.buf_occupied.load(Ordering::Relaxed);
+        let occupied = self.occupied_len.load(Ordering::Relaxed);
         let latency_samples = (((occupied as u32 / self.track.codec_params.channels?.count() as u32)
             as f32
             / self.output.supported_config.sample_rate.0 as f32)
@@ -90,6 +97,15 @@ impl Player {
     pub fn duration(&self) -> Option<Time> {
         let n_frames = self.track.codec_params.n_frames?;
         self.calc_time(n_frames)
+    }
+
+    /// Get occupied length
+    pub fn occupied_len(&self) -> usize {
+        self.occupied_len.load(Ordering::Relaxed)
+    }
+
+    pub fn state(&self) -> PlayState {
+        self.controller.state()
     }
 
     /// Start decode and output.

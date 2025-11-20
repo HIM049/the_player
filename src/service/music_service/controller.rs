@@ -59,6 +59,10 @@ impl Controller {
         &self.condvar
     }
 
+    pub fn state(&self) -> PlayState {
+        *self.state.lock().unwrap()
+    }
+
     /// Pause thread when need
     pub fn wait_if_paused(&self) {
         let mut state_guard = self.state.lock().unwrap();

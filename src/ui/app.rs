@@ -1,6 +1,7 @@
 use crate::{
     assets::icons,
     service::music_service::{self, core::Core, models::PlayState},
+    ui::modules::button::Button,
     utils::utils,
 };
 use gpui::{
@@ -12,7 +13,7 @@ use std::time::Duration;
 pub struct MyApp {
     music_core: music_service::core::Core,
     refresh_task: Option<Task<()>>,
-    vol: bool,
+    vol: f32,
 }
 
 impl MyApp {
@@ -21,7 +22,7 @@ impl MyApp {
         Self {
             music_core: Core::new(),
             refresh_task: None,
-            vol: true,
+            vol: 1.0,
         }
     }
 
@@ -129,7 +130,10 @@ impl MyApp {
                     if let Some(app) = app_weak.upgrade() {
                         if let Err(_) =
                             app.update(cx, |app: &mut MyApp, _cx: &mut Context<Self>| {
-                                if let Some(_) = app.music_core.player.as_ref() {
+                                if let Some(p) = app.music_core.player.as_ref() {
+                                    if p.state() == PlayState::Stopped && p.occupied_len() == 0 {
+                                        app.drop_core(_cx);
+                                    }
                                     _cx.notify();
                                 }
                             })
@@ -146,16 +150,24 @@ impl MyApp {
         self.refresh_task = Some(t);
     }
 
-    fn handle_drop_core(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn drop_core(&mut self, cx: &mut Context<Self>) {
         self.music_core.stop();
+        self.refresh_task = None;
         cx.notify();
     }
 
+    fn handle_drop_core(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.drop_core(cx);
+    }
+
     fn handle_switch_volume(&mut self, _: &ClickEvent, _: &mut Window, _: &mut Context<Self>) {
-        let new = if self.vol { 0.0 } else { 1.0 };
-        self.vol = !self.vol;
-        println!("new volume {}", new);
-        self.music_core.set_gain(new);
+        if self.vol >= 1.0 {
+            self.vol = 0.0;
+        } else {
+            self.vol += 0.2;
+        }
+        println!("new volume {}", self.vol);
+        self.music_core.set_gain(self.vol);
     }
 }
 
@@ -216,41 +228,33 @@ impl Render for MyApp {
                     .justify_center()
                     .items_center()
                     .child(
-                        div()
-                            .id("button_play_pause")
-                            // .border_1()
-                            // .border_color(gpui::black())
-                            .rounded_3xl()
-                            .bg(rgb(0x88b7e7))
-                            .w_16()
-                            .h_16()
-                            .flex()
-                            .justify_center()
-                            .items_center()
-                            .text_color(gpui::white())
+                        Button::new("volume")
+                            .child(
+                                svg()
+                                    .path(match self.vol {
+                                        0.0 => icons::VOLUME_MUTE,
+                                        1.0 => icons::VOLUME_UP,
+                                        _ => icons::VOLUME_DOWN,
+                                    })
+                                    .w(px(26.0))
+                                    .h(px(26.0))
+                                    .text_color(gpui::white()),
+                            )
+                            .on_click(_cx.listener(Self::handle_switch_volume)),
+                    )
+                    .child(
+                        Button::new("button_play_pause")
+                            .on_click(_cx.listener(Self::handle_switch_player))
                             .child(
                                 svg()
                                     .path(icons::PLAY_PAUSE_FILLED)
                                     .w(px(32.0))
                                     .h(px(32.0))
                                     .text_color(gpui::white()),
-                            )
-                            .hover(|style| style.bg(rgb(0x98acc1)))
-                            .on_click(_cx.listener(Self::handle_switch_player)),
+                            ),
                     )
                     .child(
-                        div()
-                            .id("button_refresh")
-                            // .border_1()
-                            // .border_color(gpui::black())
-                            .rounded_3xl()
-                            .bg(rgb(0x88b7e7))
-                            .w_16()
-                            .h_16()
-                            .flex()
-                            .justify_center()
-                            .items_center()
-                            .text_color(gpui::white())
+                        Button::new("button_stop")
                             .child(
                                 svg()
                                     .path(icons::STOP_FILLED)
@@ -258,23 +262,7 @@ impl Render for MyApp {
                                     .h(px(26.0))
                                     .text_color(gpui::white()),
                             )
-                            .hover(|style| style.bg(rgb(0x98acc1)))
                             .on_click(_cx.listener(Self::handle_drop_core)),
-                    )
-                    .child(
-                        div()
-                            .id("vol_swtich")
-                            .rounded_3xl()
-                            .bg(rgb(0x88b7e7))
-                            .w_16()
-                            .h_16()
-                            .flex()
-                            .justify_center()
-                            .items_center()
-                            .text_color(gpui::white())
-                            .child("V")
-                            .hover(|style| style.bg(rgb(0x98acc1)))
-                            .on_click(_cx.listener(Self::handle_switch_volume)),
                     ),
             )
     }

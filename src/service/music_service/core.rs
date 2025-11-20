@@ -20,7 +20,7 @@ impl Core {
         Self {
             player: None,
             current: None,
-            gain: Arc::new(AtomicF32::new(0.5)),
+            gain: Arc::new(AtomicF32::new(1.0)),
             state: PlayState::Stopped,
         }
     }

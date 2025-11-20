@@ -99,7 +99,10 @@ impl Decoder {
                 // read and decode package data
                 let package = match music_decoder.format.next_packet() {
                     Ok(p) => p,
-                    Err(_) => break, // play finished
+                    Err(_) => {
+                        controller.stop();
+                        continue;
+                    } // play finished
                 };
                 let buff = music_decoder.decoder.decode(&package).unwrap();
                 // transfer data to f32
