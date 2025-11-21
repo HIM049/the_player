@@ -5,4 +5,6 @@ pub mod models;
 pub mod music;
 pub mod output;
 pub mod player;
+pub mod service;
 pub mod stream;
+pub mod time;

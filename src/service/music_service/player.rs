@@ -2,15 +2,16 @@ use atomic_float::AtomicF32;
 use cpal::SampleRate;
 use ringbuf::{storage::Heap, traits::Split};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use symphonia::core::formats::Track;
-use symphonia::core::units::Time;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, mpsc};
 
 use crate::service::music_service::controller::Controller;
 use crate::service::music_service::decoder::Decoder;
-use crate::service::music_service::models::{self, PlayState};
+use crate::service::music_service::models::{self, Events, PlayState};
 use crate::service::music_service::output::Output;
+use crate::service::music_service::service::Service;
+use crate::service::music_service::time::PlayTime;
 
 // reInit for every new song
 pub struct Player {
@@ -18,15 +19,11 @@ pub struct Player {
     output: Output,
     // decode controller
     controller: Arc<Controller>,
-    // decoded frames length
-    decoded_len: Arc<AtomicU64>,
-    // ringbuf occupied length
-    occupied_len: Arc<AtomicUsize>,
     // current music track info
-    track: Track,
+    // track: Track,
+    play_time: Arc<PlayTime>,
+    receiver: Arc<Receiver<Events>>,
 }
-
-// TODO: add a thread for check play time and support play finish callback
 
 impl Player {
     /// Create a new player
@@ -35,6 +32,9 @@ impl Player {
         // setup ringbuf
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(models::RINGBUF_SIZE);
         let (producer, consumer) = rb.split();
+
+        // create channel
+        let (tx, rx) = mpsc::channel::<Events>();
 
         // create atomic counter
         let decoded_len = Arc::new(AtomicU64::new(0));
@@ -53,55 +53,43 @@ impl Player {
         // clone track data
         let track = decoded.format.default_track().unwrap().clone();
 
-        // create and run decode thread
-        Decoder::start_decoder(
-            decoded,
-            producer,
-            controller.clone(),
-            output.supported_config.sample_rate,
-            decoded_len.clone(),
-        )?;
+        // init play time
+        let play_time = Arc::new(
+            PlayTime::from_track(
+                track,
+                output.supported_config.sample_rate.0,
+                decoded_len.clone(),
+                buf_occupied.clone(),
+            )
+            .unwrap(),
+        );
+
+        // create and run service thread
+        Service::new(decoded, producer, controller.clone(), play_time.clone())
+            .subscribe(tx)
+            .start_service()
+            .unwrap();
 
         // return self
         Ok(Self {
             output,
             controller,
-            decoded_len,
-            occupied_len: buf_occupied,
-            track,
+            play_time,
+            receiver: Arc::new(rx),
         })
     }
 
-    /// Calculate time by length of sample
-    pub fn calc_time(&self, ts: u64) -> Option<Time> {
-        let duration = self.track.codec_params.time_base?.calc_time(ts);
-        Some(duration)
-    }
-
-    /// Get music played time
-    pub fn played_time(&self) -> Option<Time> {
-        let occupied = self.occupied_len.load(Ordering::Relaxed);
-        let latency_samples = (((occupied as u32 / self.track.codec_params.channels?.count() as u32)
-            as f32
-            / self.output.supported_config.sample_rate.0 as f32)
-            * self.track.codec_params.sample_rate? as f32) as u64;
-
-        let played_len = self
-            .decoded_len
-            .load(Ordering::Relaxed)
-            .saturating_sub(latency_samples);
-        self.calc_time(played_len)
-    }
-
-    /// Get music langth time
-    pub fn duration(&self) -> Option<Time> {
-        let n_frames = self.track.codec_params.n_frames?;
-        self.calc_time(n_frames)
+    pub fn play_time(&self) -> &PlayTime {
+        &self.play_time
     }
 
     /// Get occupied length
-    pub fn occupied_len(&self) -> usize {
-        self.occupied_len.load(Ordering::Relaxed)
+    // pub fn occupied_len(&self) -> usize {
+    //     self.occupied_len.load(Ordering::Relaxed)
+    // }
+
+    pub fn receiver(&self) -> Arc<Receiver<Events>> {
+        self.receiver.clone()
     }
 
     pub fn state(&self) -> PlayState {

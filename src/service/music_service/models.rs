@@ -6,4 +6,9 @@ pub enum PlayState {
     Stopped,
 }
 
+pub enum Events {
+    NewPlaytime(u64),
+    PlayFinished,
+}
+
 pub static RINGBUF_SIZE: usize = 48000 * 1;

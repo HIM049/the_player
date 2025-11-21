@@ -12,6 +12,4 @@ going to be a simple music player.
   - [ ] lrc player
   
 ## Misson list
-- play finish callback
-- play process indicator
 - play process control

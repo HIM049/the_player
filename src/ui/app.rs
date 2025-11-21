@@ -13,7 +13,8 @@ use std::time::Duration;
 pub struct MyApp {
     music_core: music_service::core::Core,
     refresh_task: Option<Task<()>>,
-    vol: f32,
+    played_sec: u64,
+    volume: f32,
 }
 
 impl MyApp {
@@ -22,7 +23,8 @@ impl MyApp {
         Self {
             music_core: Core::new(),
             refresh_task: None,
-            vol: 1.0,
+            played_sec: 0,
+            volume: 1.0,
         }
     }
 
@@ -62,17 +64,17 @@ impl MyApp {
         None
     }
 
+    fn played_sec(&self) -> u64 {
+        if self.music_core.player.is_some() {
+            return self.played_sec;
+        }
+        0
+    }
+
     fn current_process(&self) -> f32 {
         if let Some(p) = self.music_core.player.as_ref() {
-            let played = match p.played_time() {
-                Some(t) => t.seconds,
-                None => 0,
-            };
-            let total = match p.duration() {
-                Some(t) => t.seconds,
-                None => 0,
-            };
-            return played as f32 / total as f32;
+            // return p.play_time().played_sec() as f32 / p.play_time().duration_sec() as f32;
+            return self.played_sec() as f32 / p.play_time().duration_sec() as f32;
         }
         0.
     }
@@ -127,20 +129,29 @@ impl MyApp {
         let t = _cx.spawn(
             async move |app_weak: WeakEntity<MyApp>, cx: &mut AsyncApp| {
                 loop {
-                    if let Some(app) = app_weak.upgrade() {
-                        if let Err(_) =
-                            app.update(cx, |app: &mut MyApp, _cx: &mut Context<Self>| {
-                                if let Some(p) = app.music_core.player.as_ref() {
-                                    if p.state() == PlayState::Stopped && p.occupied_len() == 0 {
-                                        app.drop_core(_cx);
-                                    }
-                                    _cx.notify();
-                                }
-                            })
-                        {
+                    let Some(app) = app_weak.upgrade() else {
+                        continue;
+                    };
+                    if let Err(_) = app.update(cx, |app: &mut MyApp, _cx: &mut Context<Self>| {
+                        let Some(p) = app.music_core.player.as_ref() else {
                             return;
+                        };
+                        let Ok(e) = p.receiver().try_recv() else {
+                            return;
+                        };
+                        match e {
+                            music_service::models::Events::NewPlaytime(t) => {
+                                app.played_sec = t;
+                            }
+                            music_service::models::Events::PlayFinished => {
+                                app.music_core.stop();
+                            }
                         }
+                        _cx.notify();
+                    }) {
+                        return;
                     }
+
                     cx.background_executor()
                         .timer(Duration::from_millis(100))
                         .await;
@@ -161,13 +172,13 @@ impl MyApp {
     }
 
     fn handle_switch_volume(&mut self, _: &ClickEvent, _: &mut Window, _: &mut Context<Self>) {
-        if self.vol >= 1.0 {
-            self.vol = 0.0;
+        if self.volume >= 1.0 {
+            self.volume = 0.0;
         } else {
-            self.vol += 0.2;
+            self.volume += 0.2;
         }
-        println!("new volume {}", self.vol);
-        self.music_core.set_gain(self.vol);
+        println!("new volume {}", self.volume);
+        self.music_core.set_gain(self.volume);
     }
 }
 
@@ -188,6 +199,7 @@ impl Render for MyApp {
                     .flex_col()
                     .justify_center()
                     .items_center()
+                    .text_align(gpui::TextAlign::Center)
                     .child(div().text_xl().child(self.current_status()))
                     .child(if self.current_picture().is_none() {
                         div()
@@ -202,8 +214,8 @@ impl Render for MyApp {
                     .child(if let Some(p) = self.music_core.player.as_ref() {
                         format!(
                             "{} / {}",
-                            utils::format_time(p.played_time().unwrap()),
-                            utils::format_time(p.duration().unwrap()),
+                            utils::format_time(self.played_sec()),
+                            utils::format_time(p.play_time().duration_sec()),
                         )
                     } else {
                         "".to_string()
@@ -231,7 +243,7 @@ impl Render for MyApp {
                         Button::new("volume")
                             .child(
                                 svg()
-                                    .path(match self.vol {
+                                    .path(match self.volume {
                                         0.0 => icons::VOLUME_MUTE,
                                         1.0 => icons::VOLUME_UP,
                                         _ => icons::VOLUME_DOWN,
