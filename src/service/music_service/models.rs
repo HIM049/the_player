@@ -7,7 +7,7 @@ pub enum PlayState {
 }
 
 pub enum Events {
-    NewPlaytime(u64),
+    PlaytimeRefresh,
     PlayFinished,
 }
 

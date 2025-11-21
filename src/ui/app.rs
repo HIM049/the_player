@@ -8,12 +8,10 @@ use gpui::{
     AsyncApp, ClickEvent, Context, ExternalPaths, ImageSource, SharedString, Task, WeakEntity,
     Window, div, img, prelude::*, px, relative, rgb, svg,
 };
-use std::time::Duration;
 
 pub struct MyApp {
     music_core: music_service::core::Core,
     refresh_task: Option<Task<()>>,
-    played_sec: u64,
     volume: f32,
 }
 
@@ -23,7 +21,6 @@ impl MyApp {
         Self {
             music_core: Core::new(),
             refresh_task: None,
-            played_sec: 0,
             volume: 1.0,
         }
     }
@@ -64,17 +61,9 @@ impl MyApp {
         None
     }
 
-    fn played_sec(&self) -> u64 {
-        if self.music_core.player.is_some() {
-            return self.played_sec;
-        }
-        0
-    }
-
     fn current_process(&self) -> f32 {
         if let Some(p) = self.music_core.player.as_ref() {
-            // return p.play_time().played_sec() as f32 / p.play_time().duration_sec() as f32;
-            return self.played_sec() as f32 / p.play_time().duration_sec() as f32;
+            return p.play_time().played_sec() as f32 / p.play_time().duration_sec() as f32;
         }
         0.
     }
@@ -126,38 +115,25 @@ impl MyApp {
 
     /// spawn a refresh task to refresh indicater during playing
     fn spawn_refresh(&mut self, _cx: &mut Context<Self>) {
-        let t = _cx.spawn(
-            async move |app_weak: WeakEntity<MyApp>, cx: &mut AsyncApp| {
-                loop {
-                    let Some(app) = app_weak.upgrade() else {
-                        continue;
-                    };
-                    if let Err(_) = app.update(cx, |app: &mut MyApp, _cx: &mut Context<Self>| {
-                        let Some(p) = app.music_core.player.as_ref() else {
-                            return;
-                        };
-                        let Ok(e) = p.receiver().try_recv() else {
-                            return;
-                        };
-                        match e {
-                            music_service::models::Events::NewPlaytime(t) => {
-                                app.played_sec = t;
-                            }
-                            music_service::models::Events::PlayFinished => {
-                                app.music_core.stop();
-                            }
-                        }
-                        _cx.notify();
-                    }) {
-                        return;
-                    }
+        let Some(p) = self.music_core.player.as_ref() else {
+            return;
+        };
+        let rx = p.receiver();
 
-                    cx.background_executor()
-                        .timer(Duration::from_millis(100))
-                        .await;
+        let t = _cx.spawn(async move |weak: WeakEntity<MyApp>, cx: &mut AsyncApp| {
+            while let Ok(e) = rx.recv().await {
+                let r = weak.update(cx, |app, cx| {
+                    match e {
+                        music_service::models::Events::PlaytimeRefresh => (),
+                        music_service::models::Events::PlayFinished => app.music_core.stop(),
+                    };
+                    cx.notify();
+                });
+                if let Err(_) = r {
+                    break;
                 }
-            },
-        );
+            }
+        });
         self.refresh_task = Some(t);
     }
 
@@ -214,7 +190,7 @@ impl Render for MyApp {
                     .child(if let Some(p) = self.music_core.player.as_ref() {
                         format!(
                             "{} / {}",
-                            utils::format_time(self.played_sec()),
+                            utils::format_time(p.play_time().played_sec()),
                             utils::format_time(p.play_time().duration_sec()),
                         )
                     } else {

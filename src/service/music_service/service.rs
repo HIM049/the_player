@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, atomic::Ordering, mpsc::Sender},
+    sync::{Arc, atomic::Ordering},
     thread,
     time::Duration,
 };
@@ -9,6 +9,7 @@ use ringbuf::{
     HeapProd,
     traits::{Observer, Producer},
 };
+use smol::channel::Sender;
 use symphonia::core::formats::Packet;
 
 use crate::service::music_service::{
@@ -70,7 +71,7 @@ impl Service {
     /// Start decoder thread
     pub fn start_service(mut self) -> Result<(), anyhow::Error> {
         let mut is_finished = false;
-        let mut last_playtime: u64 = 0;
+        let mut last_sent_time: f64 = 0.0;
         // run decode thread
         thread::spawn(move || {
             loop {
@@ -80,16 +81,20 @@ impl Service {
                     if is_finished {
                         let buf_occupied = self.play_time.occupied_len.load(Ordering::Relaxed);
                         if buf_occupied == 0 {
-                            tx.send(Events::PlayFinished).unwrap();
+                            if let Err(e) = tx.try_send(Events::PlayFinished) {
+                                eprintln!("error when send event: {}", e);
+                            }
                             break;
                         }
                     }
                     // send current play time
-                    let new_playtime = self.play_time.played_sec();
-                    if last_playtime < new_playtime {
-                        last_playtime = new_playtime;
-                        if let Err(e) = tx.send(Events::NewPlaytime(new_playtime)) {
-                            eprintln!("error: {}", e);
+                    let time = self.play_time.played_time();
+                    let current_time = time.seconds as f64 + time.frac;
+
+                    if current_time >= (last_sent_time + 0.1) {
+                        last_sent_time = last_sent_time.max(current_time);
+                        if let Err(e) = tx.try_send(Events::PlaytimeRefresh) {
+                            eprintln!("error when send event: {}", e);
                         }
                     }
                 }
@@ -112,7 +117,7 @@ impl Service {
 
                 // if ringbuff is full, wait
                 if self.producer.is_full() {
-                    thread::sleep(Duration::from_millis(10));
+                    thread::sleep(Duration::from_millis(50));
                     continue;
                 }
 

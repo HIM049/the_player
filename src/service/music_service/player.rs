@@ -1,10 +1,10 @@
 use atomic_float::AtomicF32;
 use cpal::SampleRate;
 use ringbuf::{storage::Heap, traits::Split};
+use smol::channel::Receiver;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
-use std::sync::mpsc::Receiver;
-use std::sync::{Arc, mpsc};
 
 use crate::service::music_service::controller::Controller;
 use crate::service::music_service::decoder::Decoder;
@@ -33,9 +33,8 @@ impl Player {
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(models::RINGBUF_SIZE);
         let (producer, consumer) = rb.split();
 
-        // create channel
-        let (tx, rx) = mpsc::channel::<Events>();
-
+        // create channel=
+        let (tx, rx) = smol::channel::unbounded::<Events>();
         // create atomic counter
         let decoded_len = Arc::new(AtomicU64::new(0));
         let buf_occupied = Arc::new(AtomicUsize::new(0));
