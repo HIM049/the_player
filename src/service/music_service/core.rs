@@ -16,6 +16,7 @@ pub struct Core {
 }
 
 impl Core {
+    /// Create a new core
     pub fn new() -> Self {
         Self {
             player: None,
@@ -25,6 +26,7 @@ impl Core {
         }
     }
 
+    /// Append a new song to core
     pub fn append(&mut self, path: PathBuf) -> Result<(), anyhow::Error> {
         self.player = Some(Player::new(path.clone(), self.gain.clone())?);
         self.current = Some(Music::from_path(path)?);
@@ -32,6 +34,7 @@ impl Core {
         Ok(())
     }
 
+    /// Control core start/continue current play
     pub fn play(&mut self) {
         self.state = PlayState::Playing;
         if let Some(p) = self.player.as_ref() {
@@ -39,6 +42,7 @@ impl Core {
         }
     }
 
+    /// Control core pause current play
     pub fn pause(&mut self) {
         self.state = PlayState::Paused;
         if let Some(p) = self.player.as_ref() {
@@ -46,6 +50,7 @@ impl Core {
         }
     }
 
+    /// Control core stop current play
     pub fn stop(&mut self) {
         self.state = PlayState::Stopped;
         self.player = None;

@@ -58,6 +58,7 @@ impl Stream {
         interleaved
     }
 
+    /// function to process gain of stream
     pub fn apply_gain(f: f32, gain: f32) -> f32 {
         f * gain
     }

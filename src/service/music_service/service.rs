@@ -23,12 +23,8 @@ pub struct Service {
     producer: HeapProd<f32>,
     // state controller
     controller: Arc<Controller>,
-
+    // play time
     play_time: Arc<PlayTime>,
-    // // device sample rate
-    // device_rate: SampleRate,
-    // // length of decoded
-    // decoded_length: Arc<AtomicU64>,
     // sample write overflow zone
     leftover_samples: VecDeque<f32>,
     // whether need resample
@@ -37,11 +33,12 @@ pub struct Service {
     resampler: Option<Stream>,
     // sample pack expected length (for resampler)
     expected_sample_len: usize,
-
+    // channel sender
     sender: Option<Sender<Events>>,
 }
 
 impl Service {
+    // Create new service
     pub fn new(
         music_decoder: Decoder,
         producer: HeapProd<f32>,
@@ -63,6 +60,7 @@ impl Service {
         }
     }
 
+    /// subscribe play events
     pub fn subscribe(mut self, tx: Sender<Events>) -> Self {
         self.sender = Some(tx);
         self
@@ -80,17 +78,20 @@ impl Service {
                     // check whether play finished
                     if is_finished {
                         let buf_occupied = self.play_time.occupied_len.load(Ordering::Relaxed);
+                        // play finished
                         if buf_occupied == 0 {
+                            // send finish event
                             if let Err(e) = tx.try_send(Events::PlayFinished) {
                                 eprintln!("error when send event: {}", e);
                             }
+                            // set state
+                            self.controller.stop();
                             break;
                         }
                     }
                     // send current play time
                     let time = self.play_time.played_time();
                     let current_time = time.seconds as f64 + time.frac;
-
                     if current_time >= (last_sent_time + 0.1) {
                         last_sent_time = last_sent_time.max(current_time);
                         if let Err(e) = tx.try_send(Events::PlaytimeRefresh) {
@@ -151,6 +152,7 @@ impl Service {
         Ok(())
     }
 
+    /// decode and process stream
     fn process_stream(&mut self, package: &Packet) -> (Vec<f32>, usize) {
         let buff = self.music_decoder.decoder.decode(package).unwrap();
         // transfer data to f32

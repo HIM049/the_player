@@ -21,7 +21,9 @@ pub struct Player {
     controller: Arc<Controller>,
     // current music track info
     // track: Track,
+    // current playtime
     play_time: Arc<PlayTime>,
+    // event receiver
     receiver: Arc<Receiver<Events>>,
 }
 
@@ -33,7 +35,7 @@ impl Player {
         let rb = ringbuf::SharedRb::<Heap<f32>>::new(models::RINGBUF_SIZE);
         let (producer, consumer) = rb.split();
 
-        // create channel=
+        // create channel
         let (tx, rx) = smol::channel::unbounded::<Events>();
         // create atomic counter
         let decoded_len = Arc::new(AtomicU64::new(0));
@@ -78,21 +80,14 @@ impl Player {
         })
     }
 
+    /// Get playtime
     pub fn play_time(&self) -> &PlayTime {
         &self.play_time
     }
 
-    /// Get occupied length
-    // pub fn occupied_len(&self) -> usize {
-    //     self.occupied_len.load(Ordering::Relaxed)
-    // }
-
+    /// Get event receiver
     pub fn receiver(&self) -> Arc<Receiver<Events>> {
         self.receiver.clone()
-    }
-
-    pub fn state(&self) -> PlayState {
-        self.controller.state()
     }
 
     /// Start decode and output.

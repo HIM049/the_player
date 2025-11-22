@@ -9,11 +9,17 @@ use symphonia::core::{
 };
 
 pub struct PlayTime {
+    // current song time base
     pub time_base: TimeBase,
+    // total frames of song
     pub n_frames: u64,
+    // duration seconds of song
     pub duration_sec: u64,
+    // count of song channels
     pub channels: usize,
+    // song sample rate
     pub sample_rate: u32,
+    // output device sample rate
     pub device_sample_rate: u32,
     // decoded frames length
     pub decoded_len: Arc<AtomicU64>,
@@ -22,6 +28,7 @@ pub struct PlayTime {
 }
 
 impl PlayTime {
+    /// Create a playtime
     pub fn new(
         time_base: TimeBase,
         n_frames: u64,
@@ -44,6 +51,7 @@ impl PlayTime {
         }
     }
 
+    /// Create play time from track
     pub fn from_track(
         track: Track,
         device_sample_rate: u32,
@@ -61,15 +69,17 @@ impl PlayTime {
         ))
     }
 
+    /// Get duration of song, return Time
     pub fn duration(&self) -> Time {
         self.time_base.calc_time(self.n_frames)
     }
 
+    /// Get duration of song, return second u64
     pub fn duration_sec(&self) -> u64 {
         self.duration_sec
     }
 
-    /// Get music played time
+    /// Get music played time, return Time
     pub fn played_time(&self) -> Time {
         let occupied = self.occupied_len.load(Ordering::Relaxed);
         let latency_samples = (((occupied as u32 / self.channels as u32) as f32
@@ -83,7 +93,7 @@ impl PlayTime {
         self.time_base.calc_time(played_len)
     }
 
-    /// Get music played time
+    /// Get music played time, return second u64
     pub fn played_sec(&self) -> u64 {
         self.played_time().seconds
     }
