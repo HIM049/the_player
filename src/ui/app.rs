@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     assets::icons,
     service::music_service::{self, core::Core, models::PlayState},
@@ -14,6 +16,8 @@ pub struct MyApp {
     music_core: music_service::core::Core,
     refresh_task: Option<Task<()>>,
     volume: f32,
+    message: String,
+    msg_timer: Option<Task<()>>,
 }
 
 impl MyApp {
@@ -23,7 +27,26 @@ impl MyApp {
             music_core: Core::new(),
             refresh_task: None,
             volume: 1.0,
+            message: "".into(),
+            msg_timer: None,
         }
+    }
+
+    fn show_msg(&mut self, cx: &mut Context<Self>, msg: String, duration: Duration) {
+        self.message = msg;
+        cx.notify();
+
+        self.msg_timer = Some(
+            cx.spawn(async move |weak: WeakEntity<MyApp>, cx: &mut AsyncApp| {
+                cx.background_executor().timer(duration).await;
+
+                weak.update(cx, |app, cx| {
+                    app.message = "".into();
+                    cx.notify();
+                })
+                .unwrap();
+            }),
+        );
     }
 
     /// Get current player status
@@ -65,7 +88,8 @@ impl MyApp {
         Some(src)
     }
 
-    fn current_process(&self) -> f32 {
+    /// Get current play progress
+    fn current_progress(&self) -> f32 {
         if let Some(p) = self.music_core.player() {
             return p.play_time().played_sec() as f32 / p.play_time().duration_sec() as f32;
         }
@@ -87,7 +111,7 @@ impl MyApp {
             }
             // append to player
             if let Err(e) = self.music_core.append(path.clone()) {
-                eprintln!("error: {}", e);
+                self.show_msg(cx, format!("Error: {}", e), Duration::from_secs(6));
             }
             // start refresh page
             self.spawn_refresh(cx);
@@ -151,13 +175,17 @@ impl MyApp {
         self.drop_core(cx);
     }
 
-    fn handle_switch_volume(&mut self, _: &ClickEvent, _: &mut Window, _: &mut Context<Self>) {
+    fn handle_switch_volume(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         if self.volume >= 1.0 {
             self.volume = 0.0;
         } else {
             self.volume += 0.2;
         }
-        println!("new volume {}", self.volume);
+        self.show_msg(
+            cx,
+            format!("Volume {}%", (self.volume * 100.0) as u32),
+            Duration::from_secs(2),
+        );
         self.music_core.set_gain(self.volume);
     }
 
@@ -167,12 +195,12 @@ impl MyApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let per = event.position.x.to_f64() / window.viewport_size().width.to_f64();
         if let Some(p) = self.music_core.player() {
+            let per = event.position.x.to_f64() / window.viewport_size().width.to_f64();
             let time_point = (p.play_time().duration_sec() as f64 * per + 0.5).floor();
             p.seek_to(Time::from(time_point));
+            cx.notify();
         }
-        cx.notify();
     }
 }
 
@@ -227,17 +255,16 @@ impl Render for MyApp {
                             )
                             .child(
                                 div()
-                                    // .bg(rgb(0x88b7e7))
                                     .bg(rgba(0xffffff66))
                                     .h_1p5()
                                     .left_0()
-                                    // .w(relative(self.point)),
-                                    .w(relative(self.current_process())),
+                                    .w(relative(self.current_progress())),
                             ),
                     ),
             )
             .child(
                 div()
+                    .relative()
                     .gap_5()
                     .w_full()
                     .h_1_3()
@@ -245,6 +272,15 @@ impl Render for MyApp {
                     .flex()
                     .justify_center()
                     .items_center()
+                    .child(
+                        div()
+                            .absolute()
+                            .top_1p5()
+                            .text_align(gpui::TextAlign::Center)
+                            .text_color(rgb(0x323232))
+                            .text_sm()
+                            .child(self.message.clone()),
+                    )
                     .child(
                         Button::new("volume")
                             .child(
