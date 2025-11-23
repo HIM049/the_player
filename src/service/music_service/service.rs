@@ -13,7 +13,7 @@ use smol::channel::Sender;
 use symphonia::core::formats::{Packet, SeekMode, SeekTo};
 
 use crate::service::music_service::{
-    controller::{self, Controller, ServiceState},
+    controller::{Controller, ServiceState},
     decoder::Decoder,
     models::Events,
     stream::Stream,
