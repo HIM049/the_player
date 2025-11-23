@@ -10,10 +10,14 @@ use ringbuf::{
     traits::{Observer, Producer},
 };
 use smol::channel::Sender;
-use symphonia::core::formats::Packet;
+use symphonia::core::formats::{Packet, SeekMode, SeekTo};
 
 use crate::service::music_service::{
-    controller::Controller, decoder::Decoder, models::Events, stream::Stream, time::PlayTime,
+    controller::{self, Controller, ServiceState},
+    decoder::Decoder,
+    models::Events,
+    stream::Stream,
+    time::PlayTime,
 };
 
 pub struct Service {
@@ -73,40 +77,62 @@ impl Service {
         // run decode thread
         thread::spawn(move || {
             loop {
-                // if subscribed
-                if let Some(tx) = self.sender.as_ref() {
-                    // check whether play finished
-                    if is_finished {
-                        let buf_occupied = self.play_time.occupied_len.load(Ordering::Relaxed);
-                        // play finished
-                        if buf_occupied == 0 {
-                            // send finish event
-                            if let Err(e) = tx.try_send(Events::PlayFinished) {
-                                eprintln!("error when send event: {}", e);
+                // state check
+                match self.controller.state() {
+                    ServiceState::Playing => {
+                        // if subscribed
+                        if let Some(tx) = self.sender.as_ref() {
+                            // check whether play finished
+                            if is_finished {
+                                let buf_occupied =
+                                    self.play_time.occupied_len.load(Ordering::Relaxed);
+                                // play finished
+                                if buf_occupied == 0 {
+                                    // send finish event
+                                    if let Err(e) = tx.try_send(Events::PlayFinished) {
+                                        eprintln!("error when send event: {}", e);
+                                    }
+                                    // set state
+                                    self.controller.stop();
+                                    break;
+                                }
                             }
-                            // set state
-                            self.controller.stop();
-                            break;
+                            // send current play time
+                            let time = self.play_time.played_time();
+                            let current_time = time.seconds as f64 + time.frac;
+                            if current_time >= (last_sent_time + 0.1) {
+                                last_sent_time = last_sent_time.max(current_time);
+                                if let Err(e) = tx.try_send(Events::PlaytimeRefresh) {
+                                    eprintln!("error when send event: {}", e);
+                                }
+                            }
                         }
                     }
-                    // send current play time
-                    let time = self.play_time.played_time();
-                    let current_time = time.seconds as f64 + time.frac;
-                    if current_time >= (last_sent_time + 0.1) {
-                        last_sent_time = last_sent_time.max(current_time);
-                        if let Err(e) = tx.try_send(Events::PlaytimeRefresh) {
-                            eprintln!("error when send event: {}", e);
+                    ServiceState::Paused => {
+                        self.controller.wait_if_paused();
+                    }
+                    ServiceState::Stopped => break,
+                    ServiceState::Seek(t) => {
+                        let r = self.music_decoder.format.seek(
+                            SeekMode::Accurate,
+                            SeekTo::Time {
+                                time: t,
+                                track_id: None,
+                            },
+                        );
+                        match r {
+                            Ok(s) => {
+                                self.leftover_samples.clear();
+                                self.play_time
+                                    .decoded_len
+                                    .store(s.actual_ts, Ordering::Relaxed);
+                            }
+                            Err(e) => eprintln!("error: {}", e),
                         }
+                        self.controller.play();
+                        continue;
                     }
                 }
-
-                // stop thread
-                if self.controller.is_stopped() {
-                    break;
-                }
-
-                // pause the thread if need
-                self.controller.wait_if_paused();
 
                 // if have overflowed data, push first
                 if !self.leftover_samples.is_empty() {

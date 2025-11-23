@@ -8,8 +8,8 @@ use atomic_float::AtomicF32;
 use crate::service::music_service::{models::PlayState, music::Music, player::Player};
 
 pub struct Core {
-    pub player: Option<Player>,
-    pub current: Option<Music>,
+    player: Option<Player>,
+    current: Option<Music>,
     gain: Arc<AtomicF32>,
     state: PlayState,
     // queue: Vec<Music>,
@@ -26,6 +26,15 @@ impl Core {
         }
     }
 
+    pub fn player(&self) -> Option<&Player> {
+        self.player.as_ref()
+    }
+
+    pub fn current(&self) -> Option<&Music> {
+        self.current.as_ref()
+    }
+
+    // TODO: move to list struct
     /// Append a new song to core
     pub fn append(&mut self, path: PathBuf) -> Result<(), anyhow::Error> {
         self.player = Some(Player::new(path.clone(), self.gain.clone())?);

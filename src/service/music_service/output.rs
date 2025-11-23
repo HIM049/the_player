@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use anyhow::anyhow;
 use atomic_float::AtomicF32;
@@ -25,6 +25,7 @@ impl Output {
         target_sample_rate: SampleRate,
         gain: Arc<AtomicF32>,
         buf_occupied: Arc<AtomicUsize>,
+        clear_buf: Arc<AtomicBool>,
     ) -> Result<Self, anyhow::Error> {
         let host = cpal::default_host();
         let device = host
@@ -57,6 +58,11 @@ impl Output {
             .build_output_stream(
                 &supported_config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    if clear_buf.load(Ordering::Relaxed) {
+                        consumer.clear();
+                        clear_buf.store(false, Ordering::Relaxed);
+                    }
+
                     let g = gain.load(Ordering::Relaxed);
                     let r_lenth = consumer.pop_slice(data);
                     for sample in &mut data[..r_lenth] {

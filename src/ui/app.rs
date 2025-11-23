@@ -5,9 +5,10 @@ use crate::{
     utils::utils,
 };
 use gpui::{
-    AsyncApp, ClickEvent, Context, ExternalPaths, ImageSource, SharedString, Task, WeakEntity,
-    Window, div, img, prelude::*, px, relative, rgb, svg,
+    AsyncApp, ClickEvent, Context, ExternalPaths, ImageSource, MouseDownEvent, SharedString, Task,
+    WeakEntity, Window, div, img, prelude::*, px, relative, rgb, rgba, svg,
 };
+use symphonia::core::units::Time;
 
 pub struct MyApp {
     music_core: music_service::core::Core,
@@ -37,7 +38,7 @@ impl MyApp {
 
     /// Get name of current song
     fn current_name(&self) -> SharedString {
-        if let Some(music) = &self.music_core.current {
+        if let Some(music) = &self.music_core.current() {
             if let Some(tags) = music.get_tags() {
                 if let Some(title) = tags.get_string(&lofty::tag::ItemKey::TrackTitle) {
                     return SharedString::new(title);
@@ -49,20 +50,23 @@ impl MyApp {
 
     /// Get cover picture of current song
     fn current_picture(&self) -> Option<ImageSource> {
-        if let Some(music) = &self.music_core.current {
-            if let Some(tags) = music.get_tags() {
-                if let Some(pic) = tags.pictures().first() {
-                    if let Some(src) = utils::convert_picture(pic) {
-                        return Some(src);
-                    }
-                }
-            }
-        }
-        None
+        let Some(music) = self.music_core.current() else {
+            return None;
+        };
+        let Some(tags) = music.get_tags() else {
+            return None;
+        };
+        let Some(pic) = tags.pictures().first() else {
+            return None;
+        };
+        let Some(src) = utils::convert_picture(pic) else {
+            return None;
+        };
+        Some(src)
     }
 
     fn current_process(&self) -> f32 {
-        if let Some(p) = self.music_core.player.as_ref() {
+        if let Some(p) = self.music_core.player() {
             return p.play_time().played_sec() as f32 / p.play_time().duration_sec() as f32;
         }
         0.
@@ -115,7 +119,7 @@ impl MyApp {
 
     /// spawn a refresh task to refresh indicater during playing
     fn spawn_refresh(&mut self, _cx: &mut Context<Self>) {
-        let Some(p) = self.music_core.player.as_ref() else {
+        let Some(p) = self.music_core.player() else {
             return;
         };
         let rx = p.receiver();
@@ -156,6 +160,20 @@ impl MyApp {
         println!("new volume {}", self.volume);
         self.music_core.set_gain(self.volume);
     }
+
+    fn handle_process_click(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let per = event.position.x.to_f64() / window.viewport_size().width.to_f64();
+        if let Some(p) = self.music_core.player() {
+            let time_point = (p.play_time().duration_sec() as f64 * per + 0.5).floor();
+            p.seek_to(Time::from(time_point));
+        }
+        cx.notify();
+    }
 }
 
 impl Render for MyApp {
@@ -187,7 +205,7 @@ impl Render for MyApp {
                         )
                     })
                     .child(div().text_3xl().child(self.current_name()))
-                    .child(if let Some(p) = self.music_core.player.as_ref() {
+                    .child(if let Some(p) = self.music_core.player() {
                         format!(
                             "{} / {}",
                             utils::format_time(p.play_time().played_sec()),
@@ -198,12 +216,24 @@ impl Render for MyApp {
                     })
                     .child(
                         div()
+                            .id("processer")
                             .absolute()
                             .bottom_0()
-                            .bg(rgb(0x88b7e7))
-                            .h_1p5()
-                            .left_0()
-                            .w(relative(self.current_process())),
+                            .w_full()
+                            // .bg(rgb(0x232323))
+                            .on_mouse_down(
+                                gpui::MouseButton::Left,
+                                _cx.listener(Self::handle_process_click),
+                            )
+                            .child(
+                                div()
+                                    // .bg(rgb(0x88b7e7))
+                                    .bg(rgba(0xffffff66))
+                                    .h_1p5()
+                                    .left_0()
+                                    // .w(relative(self.point)),
+                                    .w(relative(self.current_process())),
+                            ),
                     ),
             )
             .child(

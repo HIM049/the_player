@@ -4,11 +4,12 @@ use ringbuf::{storage::Heap, traits::Split};
 use smol::channel::Receiver;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use symphonia::core::units::Time;
 
 use crate::service::music_service::controller::Controller;
 use crate::service::music_service::decoder::Decoder;
-use crate::service::music_service::models::{self, Events, PlayState};
+use crate::service::music_service::models::{self, Events};
 use crate::service::music_service::output::Output;
 use crate::service::music_service::service::Service;
 use crate::service::music_service::time::PlayTime;
@@ -25,6 +26,8 @@ pub struct Player {
     play_time: Arc<PlayTime>,
     // event receiver
     receiver: Arc<Receiver<Events>>,
+
+    need_clear_buf: Arc<AtomicBool>,
 }
 
 impl Player {
@@ -40,6 +43,7 @@ impl Player {
         // create atomic counter
         let decoded_len = Arc::new(AtomicU64::new(0));
         let buf_occupied = Arc::new(AtomicUsize::new(0));
+        let need_clear_buf = Arc::new(AtomicBool::new(false));
         // decode file
         let decoded = Decoder::decode_from_path(file_path)?;
         // setup output
@@ -48,6 +52,7 @@ impl Player {
             SampleRate(decoded.sample_rate),
             gain.clone(),
             buf_occupied.clone(),
+            need_clear_buf.clone(),
         )?;
         // create decoder controller
         let controller = Arc::new(Controller::new());
@@ -77,6 +82,7 @@ impl Player {
             controller,
             play_time,
             receiver: Arc::new(rx),
+            need_clear_buf,
         })
     }
 
@@ -88,6 +94,11 @@ impl Player {
     /// Get event receiver
     pub fn receiver(&self) -> Arc<Receiver<Events>> {
         self.receiver.clone()
+    }
+
+    pub fn seek_to(&self, seek_to: Time) {
+        self.controller.seek_to(seek_to);
+        self.need_clear_buf.store(true, Ordering::Relaxed);
     }
 
     /// Start decode and output.
