@@ -1,4 +1,4 @@
-<img width="150" height="150" alt="logo_rounded" src="https://github.com/user-attachments/assets/6e914fb0-9922-4ca8-b1aa-6713e8f9e2d6" />
+<img width="150" height="150" alt="logo_rounded_adjusted" src="https://github.com/user-attachments/assets/31e7efc5-e90c-4dcf-9b3e-dafc5a450aff" />
 
 # The Player
 Just music player.
