@@ -14,3 +14,6 @@ rubato = "0.16.2"
 rust-embed = "8.9.0"
 smol = "2.0.2"
 symphonia = {version = "0.5.5", features = ["mp3", "flac", "wav", "ogg", "isomp4", "aac"]}
+
+[build-dependencies]
+winres = "0.1.12"
